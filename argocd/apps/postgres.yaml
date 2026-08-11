@@ -1,6 +1,7 @@
-# Build order (ARCHITECTURE-PLAN.md §9, step 2): apply this and backend.yaml
-# first, once bootstrap/ is done — smoke-tests the OKD arbitrary-UID
-# question on the riskiest component before anything else is built on top.
+# No Vault dependency (postgres always uses its own plain bootstrap
+# Secret — no Vault role defined for the datastore itself, only for
+# backend/chatbot which consume it). Default sync-wave (0) is fine; it
+# doesn't need to wait for vault.yaml's wave -1.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
