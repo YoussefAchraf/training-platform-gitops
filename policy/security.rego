@@ -27,6 +27,19 @@ deny contains msg if {
 	msg := sprintf("%s/%s: pod securityContext sets a fixed runAsUser (%v) — breaks OKD's restricted-v2 arbitrary-UID SCC, see ARCHITECTURE-PLAN.md §4", [input.kind, input.metadata.name, sc.runAsUser])
 }
 
+# --- Same story for fsGroup: restricted-v2 validates it against the
+# namespace's allocated supplemental-groups range (e.g.
+# 1000650000-1000659999) and rejects any hardcoded value outright — this
+# is NOT hypothetical, it broke postgres/chatbot-redis/n8n on a real OKD
+# deploy (2026-08-11) even though runAsUser was already correctly left
+# unset. Leaving fsGroup unset too lets OKD auto-assign a valid one. ---
+deny contains msg if {
+	is_workload
+	sc := input.spec.template.spec.securityContext
+	sc.fsGroup
+	msg := sprintf("%s/%s: pod securityContext sets a fixed fsGroup (%v) — breaks OKD's restricted-v2 SCC exactly like a fixed runAsUser does, see ARCHITECTURE-PLAN.md §4", [input.kind, input.metadata.name, sc.fsGroup])
+}
+
 # --- Every container must set resources.requests and resources.limits ---
 deny contains msg if {
 	some c in containers

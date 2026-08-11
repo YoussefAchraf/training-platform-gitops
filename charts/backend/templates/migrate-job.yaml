@@ -18,8 +18,33 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: backend-migrate
+      {{- if .Values.vault.enabled }}
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/agent-set-security-context: "false"
+        # Without this, the injected sidecar stays alive after the main
+        # container exits and the Job never completes — real finding from
+        # an actual OKD deploy (backend-migrate hit BackoffLimitExceeded
+        # with zero DATABASE_URL source at all, since this whole
+        # annotations block didn't exist yet).
+        vault.hashicorp.com/agent-pre-populate-only: "true"
+        vault.hashicorp.com/role: {{ .Values.vault.role | quote }}
+        vault.hashicorp.com/agent-inject-secret-env: {{ .Values.vault.secretPath | quote }}
+        vault.hashicorp.com/agent-inject-template-env: |
+          {{`{{- with secret "`}}{{ .Values.vault.secretPath }}{{`" -}}`}}
+          DATABASE_URL=postgresql://postgres:{{`{{ .Data.data.postgres_password }}`}}@postgres:5432/{{ .Values.postgresDb | default "training_platform" }}
+          {{`{{- end -}}`}}
+      {{- end }}
     spec:
       restartPolicy: Never
+      {{- if .Values.vault.enabled }}
+      # Must match the Deployment's own ServiceAccount — backend-role in
+      # Vault is bound to the "backend" SA specifically, not "default".
+      # Real finding from an actual OKD deploy: without this, the Vault
+      # Agent init container gets "403: service account name not
+      # authorized" forever, since it authenticates as "default".
+      serviceAccountName: backend
+      {{- end }}
       securityContext:
         {{- toYaml .Values.securityContext | nindent 8 }}
       containers:
@@ -28,22 +53,27 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          {{- if .Values.vault.enabled }}
+          # Vault Agent writes DATABASE_URL to a FILE (/vault/secrets/env),
+          # not a process env var — same class of gap metrics-exporter had
+          # in the chatbot-n8n repo. `set -a` is required, not optional:
+          # plain `source file` only sets shell-local variables, not
+          # environment variables, so the exec'd child never actually
+          # inherits them without it (confirmed the hard way on a live
+          # cluster — DATABASE_URL was silently undefined the whole time
+          # without this).
+          command:
+            - sh
+            - -c
+            - set -a && source /vault/secrets/env && set +a && exec {{ .Values.migration.command | join " " }}
+          {{- else }}
           command: {{ .Values.migration.command | toJson }}
           env:
-            {{- if not .Values.vault.enabled }}
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.secrets.existingSecretName }}
                   key: DATABASE_URL
-            {{- end }}
+          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-      {{- if .Values.vault.enabled }}
-      # NOTE: Vault Agent Injector sidecars don't fit a Job cleanly (the
-      # injected sidecar keeps the pod alive after the main container
-      # exits, so the Job never completes without `vault.hashicorp.com/agent-pre-populate-only: "true"`).
-      # Flagged here rather than silently broken — add that annotation to
-      # this Job's pod template once vault.enabled is flipped to true for
-      # backend, per docs/runbook.md.
-      {{- end }}

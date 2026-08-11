@@ -20,6 +20,7 @@ spec:
       {{- if .Values.vault.enabled }}
       annotations:
         vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/agent-set-security-context: "false"
         vault.hashicorp.com/role: {{ .Values.vault.role | quote }}
         vault.hashicorp.com/agent-inject-secret-env: {{ .Values.vault.secretPath | quote }}
         vault.hashicorp.com/agent-inject-template-env: |
@@ -33,7 +34,11 @@ spec:
     spec:
       securityContext:
         runAsNonRoot: true
-        fsGroup: 1000   # n8n's own image runs as uid 1000 (node); group-0/fsGroup makes the PVC writable under OKD's assigned UID too
+        # fsGroup deliberately unset — a hardcoded value (even one matching
+        # the image's own uid, 1000) gets rejected by OKD's restricted-v2
+        # SCC ("not an allowed group"); confirmed on an actual OKD deploy.
+        # Leaving it unset lets OKD auto-assign one from the namespace's
+        # allocated range, which still makes the PVC group-writable.
         seccompProfile:
           type: RuntimeDefault
       containers:

@@ -1,14 +1,19 @@
-# Build order (ARCHITECTURE-PLAN.md §9, step 5): apply AFTER postgres,
-# backend, chatbot, and frontend are already running on plain bootstrap
-# Secrets. Once Vault is up and its Kubernetes auth method/roles are
-# configured (see docs/runbook.md), flip `vault.enabled: true` for backend
-# first, prove the Agent Injector flow end to end, then roll it out to
-# chatbot/postgres.
+# Vault is now a hard prerequisite for backend and chatbot — both charts
+# ship with vault.enabled: true by default (all their secrets are
+# Vault-delivered, no plain-Secret fallback in normal operation). The
+# sync-wave below makes ArgoCD apply and wait for Vault to be Healthy
+# BEFORE it even attempts backend/chatbot (wave 0), rather than relying on
+# a human following the runbook's ordering by hand. Still requires a
+# one-time manual step after Vault's pod is up: enable the Kubernetes auth
+# method and create backend-role/n8n-role (see docs/runbook.md) — ArgoCD
+# can't do that part for you.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: vault
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   project: default
   source:
