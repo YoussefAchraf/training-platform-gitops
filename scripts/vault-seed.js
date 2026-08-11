@@ -83,8 +83,18 @@ function requireKeys(env, keys, file) {
   }
 }
 
-function vaultKvPut(kvPath, data) {
-  const args = ['kv', 'put', kvPath];
+function vaultKvPut(mountRelativePath, data) {
+  // `vault kv put` (the CLI convenience wrapper for KV-v2) adds its own
+  // "data/" API segment automatically — passing a path that already
+  // includes "data/" (e.g. "training-platform/data/backend", matching
+  // what Vault Agent's raw-API-style annotations expect) makes the CLI
+  // double it up into "training-platform/data/data/backend" instead.
+  // Confirmed on an actual live cluster: `vault kv put` reported success,
+  // but `vault kv get` at the real path found nothing — the data had
+  // silently landed one level too deep. Callers pass the CLI-style path
+  // (mount/subpath, no "data/"); this function is the one place that
+  // needs to know the difference.
+  const args = ['kv', 'put', mountRelativePath];
   for (const [k, v] of Object.entries(data)) args.push(`${k}=${v}`);
   // execFileSync with an argv array — never a shell string — so secret
   // values can contain spaces/glob chars/anything else safely.
@@ -100,7 +110,7 @@ requireKeys(backendEnv, ['POSTGRES_PASSWORD', 'REDIS_PASSWORD', 'JWT_SECRET', 'S
 // secret` block — including postgres_password and (backend's own)
 // redis_password, duplicated here rather than split across multiple Vault
 // reads. See docs/secrets-inventory.md.
-vaultKvPut('training-platform/data/backend', {
+vaultKvPut('training-platform/backend', {
   postgres_password: backendEnv.POSTGRES_PASSWORD,
   redis_password: backendEnv.REDIS_PASSWORD,
   jwt_secret: backendEnv.JWT_SECRET,
@@ -108,7 +118,7 @@ vaultKvPut('training-platform/data/backend', {
   smtp_password: backendEnv.SMTP_PASS,
   vapid_private_key: backendEnv.VAPID_PRIVATE_KEY,
 });
-console.log('  -> training-platform/data/backend written (6 keys)');
+console.log('  -> training-platform/data/backend written (6 keys)'); // real API path Vault Agent reads, for clarity — not the CLI arg above
 
 console.log(`Reading ${CHATBOT_REPO}/.env ...`);
 const chatbotEnv = parseEnvFile(path.join(CHATBOT_REPO, '.env'));
@@ -117,13 +127,13 @@ requireKeys(chatbotEnv, ['N8N_ENCRYPTION_KEY', 'N8N_OWNER_PASSWORD', 'AI_API_KEY
 // n8n's own Vault path, same bundling pattern — includes the CHATBOT
 // redis's password, a distinct value from backend's own redis_password
 // above (two separate redis instances, see ARCHITECTURE-PLAN.md §6).
-vaultKvPut('training-platform/data/n8n', {
+vaultKvPut('training-platform/n8n', {
   n8n_encryption_key: chatbotEnv.N8N_ENCRYPTION_KEY,
   n8n_owner_password: chatbotEnv.N8N_OWNER_PASSWORD,
   n8n_ai_api_key: chatbotEnv.AI_API_KEY,
   redis_password: chatbotEnv.REDIS_PASSWORD,
 });
-console.log('  -> training-platform/data/n8n written (4 keys)');
+console.log('  -> training-platform/data/n8n written (4 keys)'); // real API path Vault Agent reads, for clarity — not the CLI arg above
 
 console.log('\nDone. Vault now holds the same secret values your local docker-compose');
 console.log('stacks already use. Next: create/confirm backend-role and n8n-role');

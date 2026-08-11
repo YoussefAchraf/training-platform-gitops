@@ -63,10 +63,11 @@ redis:
     size: 1Gi
     storageClassName: ""
   # Same postgres:16-alpine-style arbitrary-UID risk applies to plain
-  # redis:7-alpine under restricted-v2 — fsGroup covers it. ARCHITECTURE-PLAN.md §4.
+  # redis:7-alpine under restricted-v2. fsGroup deliberately unset — see
+  # charts/postgres/values.yaml for why a hardcoded value gets rejected
+  # (real finding from an actual OKD deploy, not theoretical).
   securityContext:
     runAsNonRoot: true
-    fsGroup: 999
     seccompProfile:
       type: RuntimeDefault
 
