@@ -62,11 +62,19 @@ deny contains msg if {
 
 # --- No emptyDir — ARCHITECTURE-PLAN.md §4 replaced the old chart's
 # emptyDir usage with PVCs specifically so `oc delete pod` doesn't lose
-# data; a future template regressing back to emptyDir should fail CI. ---
+# data; a future template regressing back to emptyDir should fail CI.
+# Narrow exception: a volume named "*-cache" is allowed — real finding
+# from an actual OKD deploy (n8n's /home/node/.cache is baked into the
+# image owned by uid 1000, not group-0 writable, so it EACCES under
+# OKD's arbitrary runtime UID; an emptyDir there is the standard fix,
+# same trick Vault Agent Injector uses for its own sidecar's $HOME).
+# It's build-cache data, not app data — safe to lose on pod restart,
+# unlike anything this rule actually exists to protect. ---
 deny contains msg if {
 	is_workload
 	some vol in input.spec.template.spec.volumes
 	vol.emptyDir
+	not endswith(vol.name, "-cache")
 	msg := sprintf("%s/%s: volume %q uses emptyDir — this repo uses PVCs for anything stateful, see ARCHITECTURE-PLAN.md §4", [input.kind, input.metadata.name, vol.name])
 }
 
