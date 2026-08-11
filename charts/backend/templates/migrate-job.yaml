@@ -21,6 +21,7 @@ spec:
       {{- if .Values.vault.enabled }}
       annotations:
         vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/agent-set-security-context: "false"
         # Without this, the injected sidecar stays alive after the main
         # container exits and the Job never completes — real finding from
         # an actual OKD deploy (backend-migrate hit BackoffLimitExceeded
@@ -36,6 +37,14 @@ spec:
       {{- end }}
     spec:
       restartPolicy: Never
+      {{- if .Values.vault.enabled }}
+      # Must match the Deployment's own ServiceAccount — backend-role in
+      # Vault is bound to the "backend" SA specifically, not "default".
+      # Real finding from an actual OKD deploy: without this, the Vault
+      # Agent init container gets "403: service account name not
+      # authorized" forever, since it authenticates as "default".
+      serviceAccountName: backend
+      {{- end }}
       securityContext:
         {{- toYaml .Values.securityContext | nindent 8 }}
       containers:
@@ -47,12 +56,16 @@ spec:
           {{- if .Values.vault.enabled }}
           # Vault Agent writes DATABASE_URL to a FILE (/vault/secrets/env),
           # not a process env var — same class of gap metrics-exporter had
-          # in the chatbot-n8n repo. Source it before exec'ing the real
-          # command, same fix pattern.
+          # in the chatbot-n8n repo. `set -a` is required, not optional:
+          # plain `source file` only sets shell-local variables, not
+          # environment variables, so the exec'd child never actually
+          # inherits them without it (confirmed the hard way on a live
+          # cluster — DATABASE_URL was silently undefined the whole time
+          # without this).
           command:
             - sh
             - -c
-            - source /vault/secrets/env && exec {{ .Values.migration.command | join " " }}
+            - set -a && source /vault/secrets/env && set +a && exec {{ .Values.migration.command | join " " }}
           {{- else }}
           command: {{ .Values.migration.command | toJson }}
           env:
