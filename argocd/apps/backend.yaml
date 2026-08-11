@@ -1,12 +1,17 @@
-# Build order (ARCHITECTURE-PLAN.md §9, step 2). vault.enabled defaults to
-# false in charts/backend/values.yaml — secrets come from a plain bootstrap
-# Secret until vault.yaml (step 5) is applied and this is flipped to true
-# in environments/local-okd/backend-values.yaml.
+# vault.enabled: true is the default in environments/local-okd/backend-values.yaml
+# — ALL of backend's secrets are Vault-delivered, no plain-Secret fallback
+# in normal operation. sync-wave 0 (default) runs after vault.yaml's wave
+# -1, so ArgoCD won't even attempt this until Vault is Healthy. Still
+# needs the one-time manual step of creating backend-role in Vault first
+# (see docs/runbook.md) — ArgoCD doesn't configure Vault's own auth
+# method/roles for you.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: backend
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
 spec:
   project: default
   source:

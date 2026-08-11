@@ -9,12 +9,16 @@ service:
   port: 5432
 
 # postgres:16-alpine writes its data directory as a hardcoded UID and will
-# crash-loop under OKD's restricted-v2 SCC without this — fsGroup makes the
-# mounted volume group-writable to whatever random UID/group-0 the SCC
-# assigns the pod. See ARCHITECTURE-PLAN.md §4.
+# crash-loop under OKD's restricted-v2 SCC without fsGroup making the
+# mounted volume group-writable. Real finding from an actual OKD deploy:
+# fsGroup must be LEFT UNSET, not hardcoded — restricted-v2 validates it
+# against the namespace's allocated supplemental-groups range (e.g.
+# 1000650000-1000659999, `oc get namespace <ns> -o yaml` shows the exact
+# range), same as runAsUser. A hardcoded value like 999 is rejected
+# ("999 is not an allowed group") exactly like a hardcoded runAsUser is —
+# leaving it unset lets OKD auto-assign a valid one, same mechanism.
 securityContext:
   runAsNonRoot: true
-  fsGroup: 999   # matches upstream postgres image's own gid; fsGroup only needs to be *a* group the pod's assigned UID also belongs to via group-0 membership under restricted-v2 — kept explicit and documented rather than left to chance
   seccompProfile:
     type: RuntimeDefault   # required by the Restricted Pod Security Standard (and OKD's restricted-v2 SCC) — without this, kube-apiserver silently rejects the pod under enforce mode; confirmed via a live kind-cluster deploy under PSA "restricted" (dast.yml)
 containerSecurityContext:

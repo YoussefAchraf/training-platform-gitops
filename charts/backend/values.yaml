@@ -89,7 +89,9 @@ redis:
     storageClassName: ""
   securityContext:
     runAsNonRoot: true
-    fsGroup: 999
+    # fsGroup deliberately unset — see charts/postgres/values.yaml for why
+    # a hardcoded value gets rejected by OKD's restricted-v2 SCC (real
+    # finding from an actual OKD deploy, not theoretical).
     seccompProfile:
       type: RuntimeDefault
 

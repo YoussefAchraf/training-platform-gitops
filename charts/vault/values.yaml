@@ -28,6 +28,26 @@ vault:
       enabled: false
     ha:
       enabled: false
+    # Real finding from an actual OKD deploy, not theoretical: the upstream
+    # chart's own defaults (runAsUser: 100, fsGroup: 1000) are hardcoded
+    # values OKD's restricted-v2 SCC rejects outright (runAsUser must fall
+    # in the namespace's allocated range, e.g. 1000670000-1000679999,
+    # nothing fixed). An empty map ({}) here does NOT clear these — Helm's
+    # default deep-merge treats {} as "nothing new to add" and the
+    # subchart's own defaults survive untouched (confirmed via `helm get
+    # manifest` still showing fsGroup: 1000 after supposedly emptying
+    # this). Each key must be explicitly nulled to actually remove it from
+    # the merged values — same "leave it unset, let the SCC assign it"
+    # approach used throughout this repo's own first-party charts.
+    statefulSet:
+      securityContext:
+        pod:
+          runAsNonRoot: true
+          runAsGroup: null
+          runAsUser: null
+          fsGroup: null
+        container:
+          allowPrivilegeEscalation: false
 
   injector:
     enabled: true
@@ -38,6 +58,16 @@ vault:
       limits:
         cpu: 200m
         memory: 128Mi
+    securityContext:
+      pod:
+        runAsNonRoot: true
+        runAsGroup: null
+        runAsUser: null
+        fsGroup: null
+      container:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
 
   ui:
     enabled: true
