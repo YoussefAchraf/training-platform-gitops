@@ -1,0 +1,78 @@
+name: DAST
+
+# There's no literal DAST equivalent for a GitOps repo — DAST needs a
+# running HTTP target, and unlike frontend's own dast.yml (builds+serves
+# the SPA, then points OWASP ZAP at it), this repo doesn't build or serve
+# an application of its own. The honest substitute: actually deploy for
+# real to an ephemeral `kind` cluster and validate the *live* result,
+# catching things static rendering (the `verify` workflow) can't —
+# whether pods actually reach Ready, not just whether their YAML parses.
+#
+# Scoped to charts/postgres only, deliberately: it's the one first-party
+# chart with zero external dependencies (pinned postgres:16-alpine, no
+# GHCR image tag to resolve, no Helm hook) AND it's the exact "riskiest
+# unknown" ARCHITECTURE-PLAN.md §9 calls out — the OKD arbitrary-UID
+# question. backend/frontend/chatbot aren't deployed here: their charts
+# reference GHCR image tags this repo intentionally leaves as
+# environment-specific placeholders (see environments/local-okd/*-values.yaml),
+# and backend's migrate-job is a *pre-install* Helm hook that would hang
+# `helm install` waiting on an unresolvable image — a failure mode about
+# GHCR/Helm hooks, not about anything this job is trying to validate.
+# Full end-to-end validation of those happens for real against actual OKD,
+# per docs/runbook.md.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  live-cluster-validation:
+    name: live-cluster-validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: helm/kind-action@v1
+
+      - uses: azure/setup-helm@v4.3.1
+        with:
+          version: v3.16.4
+
+      - name: Create namespace under Pod Security Admission "restricted"
+        # The closest thing a plain kind cluster has to OKD's
+        # restricted-v2 SCC — PSA "restricted" also rejects a fixed
+        # non-arbitrary UID pod, missing non-root, privilege escalation,
+        # etc. Not identical to OKD's SCC model, but a real, live,
+        # cluster-enforced admission gate rather than a static opinion.
+        run: |
+          kubectl create namespace training-platform
+          kubectl label namespace training-platform \
+            pod-security.kubernetes.io/enforce=restricted \
+            pod-security.kubernetes.io/enforce-version=latest
+
+      - name: Create CI-only dummy postgres secret (not a real credential)
+        run: |
+          kubectl create secret generic postgres-credentials \
+            --namespace training-platform \
+            --from-literal=postgres-password="ci-only-$(openssl rand -hex 8)"
+
+      - name: helm install postgres
+        run: |
+          helm install postgres charts/postgres \
+            --namespace training-platform \
+            --set persistence.storageClassName=standard \
+            --wait --timeout 3m
+
+      - name: Confirm the pod is actually Ready under restricted PSA
+        run: |
+          kubectl get pods -n training-platform -o wide
+          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=postgres \
+            -n training-platform --timeout=60s
+
+      - name: Install kubescape CLI
+        run: curl -s https://raw.githubusercontent.com/kubescape/kubescape/master/install.sh | /bin/bash
+
+      - name: kubescape scan framework nsa (live cluster, report-only for now)
+        run: kubescape scan framework nsa --format-version v2 || true

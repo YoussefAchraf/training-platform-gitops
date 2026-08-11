@@ -1,0 +1,13 @@
+name: CodeQL config
+
+# Only scripts/*.js has any application logic in this repo — everything
+# else is YAML/Helm. Scoping the scan there avoids CodeQL trying (and
+# failing) to build a JS project out of the Helm chart trees.
+paths:
+  - scripts
+
+paths-ignore:
+  - charts
+  - environments
+  - bootstrap
+  - argocd

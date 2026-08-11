@@ -1,0 +1,32 @@
+name: Promote dev to main
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  open-pr:
+    name: open-pr
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Open (or reuse) a PR from dev into main
+        run: |
+          EXISTING=$(gh pr list --repo "${{ github.repository }}" --head dev --base main --json number --jq 'length')
+          if [ "$EXISTING" != "0" ]; then
+            echo "A dev -> main PR is already open."
+            exit 0
+          fi
+          OUTPUT=$(gh pr create --repo "${{ github.repository }}" --base main --head dev \
+            --title "Promote dev to main" \
+            --body "Manually triggered promotion. Merge only after reviewing what's actually going out and confirming CI is green - this PR does not auto-merge." 2>&1) && echo "$OUTPUT" && exit 0
+          if echo "$OUTPUT" | grep -q "No commits between"; then
+            echo "dev and main are already in sync - nothing to promote."
+            exit 0
+          fi
+          echo "$OUTPUT" >&2
+          exit 1
