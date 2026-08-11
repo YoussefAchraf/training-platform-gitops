@@ -1,0 +1,49 @@
+# Mirrors docker-compose's `migrate` one-shot service exactly (same image,
+# same command: node dist/infrastructure/database/migrate.js) — runs
+# schema.sql via migrate.ts before the Deployment's new pods roll out.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: backend-migrate-{{ .Release.Revision }}
+  labels:
+    app.kubernetes.io/name: backend-migrate
+    app.kubernetes.io/part-of: training-platform
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: backend-migrate
+    spec:
+      restartPolicy: Never
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
+      containers:
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          command: {{ .Values.migration.command | toJson }}
+          env:
+            {{- if not .Values.vault.enabled }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecretName }}
+                  key: DATABASE_URL
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- if .Values.vault.enabled }}
+      # NOTE: Vault Agent Injector sidecars don't fit a Job cleanly (the
+      # injected sidecar keeps the pod alive after the main container
+      # exits, so the Job never completes without `vault.hashicorp.com/agent-pre-populate-only: "true"`).
+      # Flagged here rather than silently broken — add that annotation to
+      # this Job's pod template once vault.enabled is flipped to true for
+      # backend, per docs/runbook.md.
+      {{- end }}

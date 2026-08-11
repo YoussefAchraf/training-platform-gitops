@@ -1,0 +1,26 @@
+# Non-secret overrides for this environment only. Real values live in the
+# `backend-credentials` Secret — see backend-secrets.example.yaml and
+# docs/runbook.md, never here.
+image:
+  # Pin the actual published digest/tag from GHCR after PR #73/#74's fix —
+  # never a floating `latest`, per CHANGES-PLAN.md's own conclusion that
+  # deploying `latest` risked pulling a pre-fix image. Replace with the
+  # real tag once confirmed from the training-platform-backend repo's
+  # published GHCR packages.
+  tag: "REPLACE_WITH_PUBLISHED_MAIN_TAG_OR_DIGEST"
+
+route:
+  host: "api-training-platform.apps-crc.testing"   # replace with your local OKD's real Route subdomain
+
+env:
+  CLIENT_URL: "https://training-platform.apps-crc.testing"   # the frontend's Route host
+  # Not secret by design (VAPID key pairs are meant to have a public half) —
+  # copied straight from the real local .env pair currently in use, so push
+  # notifications keep working against the same pair rather than silently
+  # breaking on a mismatched key. Regenerate both together with
+  # `npx web-push generate-vapid-keys` if this pair is ever rotated — must
+  # stay identical to frontend-values.yaml's VITE_VAPID_PUBLIC_KEY.
+  VAPID_PUBLIC_KEY: "BNS64Kb9w84XhbJsqcwhqOt0djB-cwlZNXKNdgPmAlpcraWkSMfsNgkTzkyuBbA7L5Hq4C52Jcm9yWV8fLOhu58"
+
+vault:
+  enabled: false   # flip to true once charts/vault is applied and backend-role is configured — see docs/runbook.md §"Vault cutover"

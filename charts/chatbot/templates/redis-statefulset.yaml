@@ -1,0 +1,71 @@
+# Dedicated to the chatbot (rate-limit + FAQ-cache) — deliberately NOT
+# shared with the backend's own redis. See ARCHITECTURE-PLAN.md §6.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: chatbot-redis
+  labels:
+    app.kubernetes.io/name: chatbot-redis
+    app.kubernetes.io/part-of: training-platform
+spec:
+  serviceName: {{ .Values.redis.service.name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: chatbot-redis
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: chatbot-redis
+        app.kubernetes.io/part-of: training-platform
+    spec:
+      securityContext:
+        {{- toYaml .Values.redis.securityContext | nindent 8 }}
+      containers:
+        - name: redis
+          image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+          imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command:
+            - redis-server
+            - "--requirepass"
+            - "$(REDIS_PASSWORD)"
+          # Always sourced from the plain Secret, even once vault.enabled is
+          # true for n8n/backend — ARCHITECTURE-PLAN.md §5 only defines Vault
+          # roles for the *consumers* (backend-role, n8n-role), not a
+          # redis-role for the datastore itself starting up. Simplest correct
+          # option: redis keeps reading its own --requirepass value from
+          # here; n8n/backend get theirs from Vault once migrated.
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecretName }}
+                  key: REDIS_PASSWORD
+          ports:
+            - name: redis
+              containerPort: 6379
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "redis-cli -a \"$REDIS_PASSWORD\" ping | grep -q PONG"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.redis.resources | nindent 12 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if .Values.redis.persistence.storageClassName }}
+        storageClassName: {{ .Values.redis.persistence.storageClassName }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.redis.persistence.size }}

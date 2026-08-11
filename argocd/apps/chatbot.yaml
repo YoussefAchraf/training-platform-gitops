@@ -1,0 +1,25 @@
+# Build order (ARCHITECTURE-PLAN.md §9, step 3): n8n + its dedicated redis +
+# metrics-exporter, deployed/rolled back together as one logical unit.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: chatbot
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/YoussefAchraf/training-platform-gitops.git
+    targetRevision: main
+    path: charts/chatbot
+    helm:
+      valueFiles:
+        - ../../environments/local-okd/chatbot-values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: training-platform
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

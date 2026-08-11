@@ -1,0 +1,28 @@
+# Build order (ARCHITECTURE-PLAN.md §9, step 4). Requires the frontend
+# image to have been built with --build-arg VITE_API_URL/
+# VITE_CHATBOT_WEBHOOK_URL pointed at this environment's real Route
+# hostnames (see docs/runbook.md) — this chart cannot fix that at deploy
+# time, those values are baked into the JS bundle at image build time.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: frontend
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/YoussefAchraf/training-platform-gitops.git
+    targetRevision: main
+    path: charts/frontend
+    helm:
+      valueFiles:
+        - ../../environments/local-okd/frontend-values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: training-platform
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

@@ -1,0 +1,99 @@
+image:
+  repository: ghcr.io/youssefachraf/training-platform-backend
+  tag: ""              # set in environments/local-okd/backend-values.yaml — pin a real tag/digest, never floating `latest`
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  port: 4000
+
+route:
+  host: ""              # set in environments/local-okd/backend-values.yaml, e.g. api-training-platform.apps-crc.testing
+  tlsTermination: edge
+
+# See ARCHITECTURE-PLAN.md §4: backend's Dockerfile runs `USER node`
+# (fixed named user), not arbitrary-uid-safe by default. The Dockerfile fix
+# (chgrp 0 + chmod g=u on $PM2_HOME) landed in training-platform-backend
+# PR #73/#74 — this securityContext is the k8s-side half of that fix.
+securityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault   # required by the Restricted Pod Security Standard / OKD's restricted-v2 SCC — see charts/postgres/values.yaml for how this was actually caught (a live kind-cluster deploy under PSA "restricted")
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Non-secret env, matches training-platform-backend's .env.example.
+env:
+  PORT: "4000"
+  CLIENT_URL: ""                              # set per environment — the frontend's Route URL
+  TRUST_PROXY: "true"                          # behind an OKD Route now, unlike bare local Docker
+  JWT_EXPIRES_IN: "8h"
+  REFRESH_TOKEN_TTL_DAYS: "30"
+  SMTP_HOST: "smtp.mailtrap.io"
+  SMTP_PORT: "587"
+  SMTP_FROM: "Training Platform <no-reply@training-platform.com>"
+  REPORT_JOB_CRON: "*/10 * * * *"
+  REPORT_AUTO_GENERATE_AFTER_MINUTES: "60"
+  VAPID_SUBJECT: "mailto:you@yourdomain.com"
+  VAPID_PUBLIC_KEY: ""                         # public by design, still set per environment to match VAPID_PRIVATE_KEY's pair
+
+# See "Design decision: Vault gets a values-flag toggle" in the build plan.
+# false (default): secrets come from `secrets.existingSecretName`, a plain
+#   Secret created out-of-band (see environments/local-okd/backend-secrets.example.yaml
+#   and docs/runbook.md) — lets this chart deploy standalone in build-order
+#   steps 1-4, before Vault exists.
+# true: Vault Agent Injector annotations are added instead (ARCHITECTURE-PLAN.md
+#   §5) and the plain Secret is not referenced.
+vault:
+  enabled: false
+  role: backend-role
+  secretPath: training-platform/data/backend
+
+secrets:
+  # Keys expected inside this Secret: DATABASE_URL, REDIS_URL, JWT_SECRET,
+  # SMTP_USER, SMTP_PASS, VAPID_PRIVATE_KEY, REDIS_PASSWORD — matching the
+  # env var names the app (or, for REDIS_PASSWORD, the redis-statefulset
+  # below) reads directly. DATABASE_URL/REDIS_URL must be full connection
+  # strings (the app never reads raw postgres/redis passwords itself), and
+  # the password embedded in REDIS_URL must equal the REDIS_PASSWORD key
+  # exactly, since that's what backend-redis actually enforces.
+  existingSecretName: backend-credentials
+
+# Backend's own dedicated redis (refresh tokens + rate limiting) — separate
+# from the chatbot's redis. See ARCHITECTURE-PLAN.md §6.
+redis:
+  image:
+    repository: redis
+    tag: "7-alpine"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  persistence:
+    size: 1Gi
+    storageClassName: ""
+  securityContext:
+    runAsNonRoot: true
+    fsGroup: 999
+    seccompProfile:
+      type: RuntimeDefault
+
+migration:
+  # Mirrors docker-compose's `migrate` one-shot service exactly: same image,
+  # same command, run as a Helm hook before the Deployment rolls out.
+  command: ["node", "dist/infrastructure/database/migrate.js"]

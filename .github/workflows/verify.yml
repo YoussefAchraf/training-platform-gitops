@@ -1,0 +1,179 @@
+name: Verify
+
+# workflow_call composition, mirroring backend/frontend's own verify.yml
+# structure. See ARCHITECTURE-PLAN.md §7 for how each job maps onto the
+# app repos' own lint/typecheck/sca/sast/secret-scan pattern for a repo
+# that's Helm charts + K8s YAML instead of application source.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: azure/setup-helm@v4.3.1
+        with:
+          version: v3.16.4
+
+      - name: helm dependency update (vault, monitoring wrapper charts)
+        run: |
+          helm dependency update charts/vault
+          helm dependency update charts/monitoring
+
+      - name: helm lint (every chart)
+        run: |
+          set -e
+          for c in charts/*/; do
+            echo "::group::helm lint $c"
+            helm lint "$c"
+            echo "::endgroup::"
+          done
+
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz \
+            | tar xz kubeconform
+          sudo mv kubeconform /usr/local/bin/
+
+      - name: helm template | kubeconform -strict (first-party charts, against local-okd values)
+        run: |
+          set -e
+          for c in postgres backend frontend chatbot; do
+            echo "::group::kubeconform $c"
+            helm template "charts/$c" -f "environments/local-okd/$c-values.yaml" \
+              | kubeconform -strict -summary \
+                  -schema-location default \
+                  -kubernetes-version 1.29.0 \
+                  -skip Route,ServiceMonitor
+            echo "::endgroup::"
+          done
+
+  secret-scan:
+    name: secret-scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  sast:
+    name: sast
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Semgrep scan (community rules incl. Kubernetes/YAML, report only for now)
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/src" semgrep/semgrep \
+            semgrep scan --config=auto /src || true
+
+  k8s-sast:
+    name: k8s-sast
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: azure/setup-helm@v4.3.1
+        with:
+          version: v3.16.4
+
+      - name: helm dependency update (vault, monitoring wrapper charts)
+        run: |
+          helm dependency update charts/vault
+          helm dependency update charts/monitoring
+
+      - name: Render every chart to a single manifest set
+        run: |
+          mkdir -p /tmp/rendered
+          for c in charts/*/; do
+            name=$(basename "$c")
+            valuesfile="environments/local-okd/${name}-values.yaml"
+            if [ -f "$valuesfile" ]; then
+              helm template "$c" -f "$valuesfile" > "/tmp/rendered/${name}.yaml"
+            else
+              helm template "$c" > "/tmp/rendered/${name}.yaml"
+            fi
+          done
+
+      - name: kube-linter
+        # Report-only for now (like the app repos' own semgrep/checkov
+        # steps) — this is a first CI run for this repo's rendered
+        # manifests, unverified until it's actually seen findings.
+        # policy/security.rego (the `policy` job) is the hard-fail gate;
+        # this is a broader, noisier cross-check on top of it.
+        continue-on-error: true
+        uses: stackrox/kube-linter-action@v1.0.4
+        with:
+          directory: /tmp/rendered
+
+      - name: checkov
+        uses: bridgecrewio/checkov-action@v12.1347.0
+        with:
+          directory: /tmp/rendered
+          framework: kubernetes
+          soft_fail: true # report-only for now, same convention as the app repos' own SAST job
+
+  policy:
+    name: policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: azure/setup-helm@v4.3.1
+        with:
+          version: v3.16.4
+
+      - name: Render first-party charts (policy applies to charts this repo owns, not upstream vault/monitoring internals)
+        run: |
+          mkdir -p /tmp/rendered
+          for name in postgres backend frontend chatbot; do
+            helm template "charts/$name" -f "environments/local-okd/$name-values.yaml" > "/tmp/rendered/${name}.yaml"
+          done
+
+      - name: Install conftest
+        run: |
+          curl -sSL https://github.com/open-policy-agent/conftest/releases/download/v0.69.0/conftest_0.69.0_Linux_x86_64.tar.gz \
+            | tar xz conftest
+          sudo mv conftest /usr/local/bin/
+
+      - name: conftest test (this repo's own security policies)
+        run: conftest test --policy policy /tmp/rendered/*.yaml
+
+  sca:
+    name: sca
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Scoped to the upstream images THIS repo alone chooses to deploy
+      # (postgres:16-alpine, redis:7-alpine — pinned in charts/postgres and
+      # charts/backend|chatbot's values.yaml). The backend/frontend/chatbot
+      # app images are already Trivy-scanned in their own source repos'
+      # docker-build-and-scan.yml / docker-publish*.yml before being
+      # published — re-scanning them here would just duplicate that gate,
+      # and this repo can't resolve their placeholder tags anyway (see
+      # environments/local-okd/*-values.yaml's REPLACE_WITH_* comments).
+      - name: Trivy — postgres:16-alpine
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: postgres:16-alpine
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Trivy — redis:7-alpine
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: redis:7-alpine
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          ignore-unfixed: true

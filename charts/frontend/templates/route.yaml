@@ -1,0 +1,19 @@
+{{- if .Values.route.host }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: frontend
+  labels:
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/part-of: training-platform
+spec:
+  host: {{ .Values.route.host }}
+  to:
+    kind: Service
+    name: frontend
+  port:
+    targetPort: http
+  tls:
+    termination: {{ .Values.route.tlsTermination }}
+    insecureEdgeTerminationPolicy: Redirect
+{{- end }}

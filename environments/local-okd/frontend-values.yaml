@@ -1,0 +1,14 @@
+image:
+  # Must be rebuilt from training-platform-frontend with --build-arg
+  # VITE_API_URL / VITE_CHATBOT_WEBHOOK_URL / VITE_VAPID_PUBLIC_KEY pointed
+  # at THIS file's route.host / the chatbot's route host — see the
+  # ARCHITECTURE-PLAN.md §6 build-arg caveat and docs/runbook.md. This
+  # chart cannot fix that at deploy time.
+  tag: "REPLACE_WITH_LOCAL_OKD_BUILD_TAG"
+
+route:
+  host: "training-platform.apps-crc.testing"   # replace with your local OKD's real Route subdomain
+
+env:
+  API_ORIGIN: "https://api-training-platform.apps-crc.testing"     # must match backend-values.yaml's route.host
+  CHATBOT_ORIGIN: "https://n8n-training-platform.apps-crc.testing" # must match chatbot-values.yaml's n8n.route.host

@@ -1,0 +1,29 @@
+# Documented, reviewed exceptions only — never a blanket severity downgrade.
+#
+# All 15 CVEs below are the SAME root cause: a stale Go toolchain baked
+# into `gosu`, a tiny privilege-drop helper bundled in the official
+# postgres:16-alpine image (docker-entrypoint.sh execs it once, briefly,
+# at container startup to switch root -> postgres). gosu makes no
+# outbound network/TLS connections of its own, so this stdlib's
+# TLS/net/url/x509 CVEs have effectively no real attack surface in this
+# deployment. Confirmed (2026-08-11) present across every current
+# postgres:16-alpine* tag (16-alpine, 16-alpine3.22/.23/.24) — not
+# something a different tag pin fixes; needs docker-library/postgres to
+# rebuild gosu against a patched Go compiler. Re-evaluate at every
+# review — delete once the upstream image picks up a fix, don't let this
+# list grow forever without re-checking whether it's still needed.
+CVE-2025-68121
+CVE-2025-61726
+CVE-2025-61729
+CVE-2026-25679
+CVE-2026-27145
+CVE-2026-32280
+CVE-2026-32281
+CVE-2026-32283
+CVE-2026-33811
+CVE-2026-33814
+CVE-2026-39820
+CVE-2026-39822
+CVE-2026-39836
+CVE-2026-42499
+CVE-2026-42504

@@ -1,0 +1,29 @@
+# Build order (ARCHITECTURE-PLAN.md §9, step 5): apply AFTER postgres,
+# backend, chatbot, and frontend are already running on plain bootstrap
+# Secrets. Once Vault is up and its Kubernetes auth method/roles are
+# configured (see docs/runbook.md), flip `vault.enabled: true` for backend
+# first, prove the Agent Injector flow end to end, then roll it out to
+# chatbot/postgres.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/YoussefAchraf/training-platform-gitops.git
+    targetRevision: main
+    path: charts/vault
+    helm:
+      valueFiles:
+        - ../../environments/local-okd/vault-values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vault
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

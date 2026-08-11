@@ -1,0 +1,45 @@
+# Applied by hand, once, AFTER 00-namespace.yaml and AFTER ArgoCD's CRDs +
+# controller are installed into the `argocd` namespace by some other means
+# the very first time (e.g. `oc apply -k
+# https://github.com/argoproj/argo-cd/manifests/cluster-install?ref=stable`,
+# or the upstream Helm chart run once by hand with `helm install`). That
+# first bootstrap is the chicken-and-egg step ARCHITECTURE-PLAN.md §1/§3
+# calls out — ArgoCD cannot deploy itself into a cluster where it doesn't
+# exist yet.
+#
+# This Application is what makes ArgoCD subsequently manage its OWN Helm
+# release going forward — from this point on, upgrading ArgoCD's version or
+# values is a `git push` to this repo, not a manual `helm upgrade`.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io/foreground
+spec:
+  project: default
+  source:
+    repoURL: https://argoproj.github.io/argo-helm
+    chart: argo-cd
+    targetRevision: 7.7.x
+    helm:
+      releaseName: argocd
+      values: |
+        server:
+          extraArgs:
+            - --insecure   # TLS terminates at the OKD Route (edge), not here
+          route:
+            enabled: false # created explicitly below via the frontend/backend pattern is not needed for argocd itself in this local setup; use `oc expose svc/argocd-server` or add a Route here later if external UI access is wanted
+        configs:
+          params:
+            server.insecure: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false   # namespace already created by 00-namespace.yaml
