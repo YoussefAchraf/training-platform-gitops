@@ -1,0 +1,23 @@
+# Never pushed, ever — local-only planning/backup docs. Explicit,
+# repeated instruction: these three files must never reach the remote.
+/ARCHITECTURE-PLAN.md
+/CHANGES-PLAN.md
+/README.md
+
+# Real secret values never get committed — only the *-secrets.example.yaml
+# placeholders (key names, no values) live in git. See docs/secrets-inventory.md.
+*-secrets.yaml
+*.secrets.yaml
+environments/**/*-secrets.yaml
+.env
+
+# Local tooling state
+.vault-token
+kubeconfig
+*.kubeconfig
+charts/**/charts/
+charts/**/Chart.lock
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
