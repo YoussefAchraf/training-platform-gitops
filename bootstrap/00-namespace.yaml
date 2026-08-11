@@ -1,0 +1,34 @@
+# Applied by hand, once: `oc apply -f bootstrap/00-namespace.yaml`
+#
+# OKD calls namespaces "Projects" — a plain Namespace object works fine for
+# `oc apply`, OKD layers its Project semantics on top automatically.
+# Platform tooling (ArgoCD, Vault, monitoring) gets its own project, kept
+# separate from the app-tier `training-platform` project, per
+# ARCHITECTURE-PLAN.md §4 "Project (namespace) model".
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: training-platform
+  labels:
+    app.kubernetes.io/part-of: training-platform
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+  labels:
+    app.kubernetes.io/part-of: training-platform
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vault
+  labels:
+    app.kubernetes.io/part-of: training-platform
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    app.kubernetes.io/part-of: training-platform

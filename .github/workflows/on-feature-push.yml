@@ -1,0 +1,39 @@
+name: On feature branch push
+
+on:
+  push:
+    branches:
+      - "feature/**"
+
+jobs:
+  verify:
+    uses: ./.github/workflows/verify.yml
+    secrets: inherit
+
+  open-pr-to-dev:
+    name: open-pr-to-dev
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      # backend/frontend's own on-feature-push.yml also auto-merges once
+      # dev's checks pass, using a DEV_AUTOMERGE_TOKEN secret (a PAT — the
+      # default GITHUB_TOKEN can't trigger further workflow runs on the PR
+      # it creates). That secret isn't configured for this repo yet, so
+      # this deliberately only opens the PR and stops there — add
+      # DEV_AUTOMERGE_TOKEN and the `gh pr merge --auto` step from
+      # backend's on-feature-push.yml later if full parity is wanted.
+      - name: Open (or reuse) a PR into dev
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          EXISTING=$(gh pr list --repo "${{ github.repository }}" --head "$BRANCH" --base dev --json number --jq 'length')
+          if [ "$EXISTING" = "0" ]; then
+            TITLE=$(echo "${{ github.event.head_commit.message }}" | head -n1)
+            gh pr create --repo "${{ github.repository }}" --base dev --head "$BRANCH" \
+              --title "$TITLE" \
+              --body "Auto-opened after verify passed on \`$BRANCH\`. Review and merge manually."
+          fi

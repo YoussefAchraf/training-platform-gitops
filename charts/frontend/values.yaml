@@ -1,0 +1,49 @@
+image:
+  repository: ghcr.io/youssefachraf/training-platform-frontend
+  tag: ""              # pin a real tag/digest — see the build-arg caveat below before rebuilding
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  port: 8080
+
+route:
+  host: ""              # set in environments/local-okd/frontend-values.yaml
+  tlsTermination: edge
+
+# nginxinc/nginx-unprivileged already runs as uid 101 / group-writable by
+# convention — no fsGroup/chgrp fix needed, unlike backend. ARCHITECTURE-PLAN.md §4.
+securityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+# Runtime env — NOT the VITE_* build args (those are baked into the JS
+# bundle at image build time and cannot be changed here, see the note
+# below). These two ARE read at container start by
+# docker/docker-entrypoint.sh to render the nginx CSP's connect-src.
+# Must match the real backend/chatbot Route hosts, or the browser's CSP
+# will block the frontend's own API/webhook calls.
+env:
+  API_ORIGIN: ""         # e.g. https://api-training-platform.apps-crc.testing
+  CHATBOT_ORIGIN: ""     # e.g. https://n8n-training-platform.apps-crc.testing
+
+# Reminder, not a chart setting: VITE_API_URL / VITE_CHATBOT_WEBHOOK_URL /
+# VITE_VAPID_PUBLIC_KEY are compiled into the JS bundle at `docker build`
+# time in training-platform-frontend's own CI. This chart cannot override
+# them — the image must be rebuilt with --build-arg values pointed at this
+# environment's real Route hostnames before this chart is useful. See
+# ARCHITECTURE-PLAN.md §6 and docs/runbook.md.

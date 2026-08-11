@@ -1,0 +1,104 @@
+# Values passed straight through to kube-prometheus-stack (nested under
+# `kube-prometheus-stack:`). Trimmed for a single-node local OKD install per
+# ARCHITECTURE-PLAN.md §6 — upstream defaults are tuned for real clusters
+# and will over-request on a modest local VM/CRC instance.
+kube-prometheus-stack:
+  prometheus:
+    prometheusSpec:
+      replicas: 1
+      retention: 3d
+      resources:
+        requests:
+          cpu: 100m
+          memory: 512Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+      storageSpec:
+        volumeClaimTemplate:
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            resources:
+              requests:
+                storage: 5Gi
+            # storageClassName intentionally unset — confirm with
+            # `oc get storageclass` and set the cluster's default/name in
+            # environments/local-okd/monitoring-values.yaml if it isn't the
+            # cluster default already.
+
+  alertmanager:
+    alertmanagerSpec:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 25m
+          memory: 64Mi
+        limits:
+          cpu: 100m
+          memory: 128Mi
+
+  grafana:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+    persistence:
+      enabled: true
+      size: 1Gi
+    # Real password comes from a Secret created out-of-band, same pattern
+    # as the app charts — see docs/secrets-inventory.md. Never a plaintext
+    # default here.
+    admin:
+      existingSecret: grafana-admin-credentials
+      userKey: admin-user
+      passwordKey: admin-password
+    # Dashboards-as-ConfigMap sideloading: any ConfigMap in the
+    # `monitoring` namespace labeled `grafana_dashboard: "1"` is picked up
+    # automatically — add training-platform-specific dashboards this way
+    # rather than editing this chart.
+    sidecar:
+      dashboards:
+        enabled: true
+        label: grafana_dashboard
+        labelValue: "1"
+
+  # node-exporter runs as a DaemonSet needing host PID/network access —
+  # under OKD's default restricted-v2 SCC this will fail to schedule. It
+  # needs the `hostaccess` (or `hostnetwork`) SCC granted to its
+  # ServiceAccount. Flagged here explicitly rather than silently failing;
+  # see docs/runbook.md for the `oc adm policy add-scc-to-user` command.
+  prometheus-node-exporter:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 64Mi
+
+  kube-state-metrics:
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
+  # OKD ships its own API server metrics/monitoring stack already scraping
+  # cluster-level targets in some configurations — these upstream
+  # component scrapers target vanilla-k8s control-plane endpoints that
+  # don't exist the same way on OKD and just generate noisy failed-scrape
+  # alerts. Disabled rather than fought.
+  kubeControllerManager:
+    enabled: false
+  kubeScheduler:
+    enabled: false
+  kubeEtcd:
+    enabled: false
+  kubeProxy:
+    enabled: false

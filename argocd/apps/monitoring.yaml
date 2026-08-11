@@ -1,0 +1,27 @@
+# Build order (ARCHITECTURE-PLAN.md §9, step 6): last — additive
+# observability, not a dependency of anything else working. Check
+# `oc get storageclass` and local resource headroom before applying (§6) —
+# kube-prometheus-stack defaults are tuned for real clusters.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/YoussefAchraf/training-platform-gitops.git
+    targetRevision: main
+    path: charts/monitoring
+    helm:
+      valueFiles:
+        - ../../environments/local-okd/monitoring-values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

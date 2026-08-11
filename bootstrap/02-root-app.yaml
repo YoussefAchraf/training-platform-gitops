@@ -1,0 +1,29 @@
+# Applied by hand, once, LAST (after 00 and 01). This is the "app of apps"
+# root — ArgoCD reads argocd/apps/ in this repo and creates one child
+# Application per file, each syncing independently from then on. See
+# ARCHITECTURE-PLAN.md §3.
+#
+# From this point on, every future change to this repo is: `git push` →
+# ArgoCD notices → reconciles. Nothing in this repo's CI ever runs `helm
+# upgrade` or `oc apply` against the cluster directly.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/YoussefAchraf/training-platform-gitops.git
+    targetRevision: main
+    path: argocd/apps
+    directory:
+      recurse: false
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

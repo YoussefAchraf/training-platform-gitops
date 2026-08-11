@@ -1,0 +1,14 @@
+# Thin wrapper: just a values.yaml for the upstream hashicorp/vault chart,
+# pinned as a dependency — not a hand-rolled reimplementation.
+# ARCHITECTURE-PLAN.md §1/§5. Run `helm dependency update charts/vault`
+# before first use (the dependency archive is gitignored, not vendored).
+apiVersion: v2
+name: vault
+description: Wrapper chart pulling in upstream hashicorp/vault, dev-mode, for the local-OKD environment
+type: application
+version: 0.1.0
+appVersion: "1.17.x"
+dependencies:
+  - name: vault
+    version: "0.28.x"
+    repository: "https://helm.releases.hashicorp.com"

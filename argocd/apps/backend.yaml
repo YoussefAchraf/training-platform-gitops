@@ -1,0 +1,27 @@
+# Build order (ARCHITECTURE-PLAN.md §9, step 2). vault.enabled defaults to
+# false in charts/backend/values.yaml — secrets come from a plain bootstrap
+# Secret until vault.yaml (step 5) is applied and this is flipped to true
+# in environments/local-okd/backend-values.yaml.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: backend
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/YoussefAchraf/training-platform-gitops.git
+    targetRevision: main
+    path: charts/backend
+    helm:
+      valueFiles:
+        - ../../environments/local-okd/backend-values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: training-platform
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

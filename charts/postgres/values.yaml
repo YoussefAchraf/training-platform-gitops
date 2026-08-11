@@ -1,0 +1,45 @@
+image:
+  repository: postgres
+  tag: "16-alpine"
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  port: 5432
+
+# postgres:16-alpine writes its data directory as a hardcoded UID and will
+# crash-loop under OKD's restricted-v2 SCC without this — fsGroup makes the
+# mounted volume group-writable to whatever random UID/group-0 the SCC
+# assigns the pod. See ARCHITECTURE-PLAN.md §4.
+securityContext:
+  runAsNonRoot: true
+  fsGroup: 999   # matches upstream postgres image's own gid; fsGroup only needs to be *a* group the pod's assigned UID also belongs to via group-0 membership under restricted-v2 — kept explicit and documented rather than left to chance
+  seccompProfile:
+    type: RuntimeDefault   # required by the Restricted Pod Security Standard (and OKD's restricted-v2 SCC) — without this, kube-apiserver silently rejects the pod under enforce mode; confirmed via a live kind-cluster deploy under PSA "restricted" (dast.yml)
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+persistence:
+  size: 5Gi
+  storageClassName: ""   # set in environments/local-okd/postgres-values.yaml once `oc get storageclass` is confirmed
+
+# Non-secret. POSTGRES_PASSWORD is injected via the Secret named below —
+# never a plaintext value.env: {} — see docs/secrets-inventory.md.
+postgresDb: training_platform
+postgresUser: postgres
+
+# Name of the Secret (created out-of-band for now, replaced by Vault-derived
+# secrets in a later phase per ARCHITECTURE-PLAN.md §5) holding key
+# `postgres-password`.
+existingSecret: postgres-credentials

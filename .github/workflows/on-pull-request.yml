@@ -1,0 +1,19 @@
+name: On pull request
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    uses: ./.github/workflows/verify.yml
+    secrets: inherit
+
+  dast:
+    uses: ./.github/workflows/dast.yml
+    secrets: inherit
