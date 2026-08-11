@@ -1,0 +1,16 @@
+# Thin wrapper: just a values.yaml for the upstream
+# prometheus-community/kube-prometheus-stack chart. ARCHITECTURE-PLAN.md §1.
+# Run `helm dependency update charts/monitoring` before first use (the
+# dependency archive is gitignored, not vendored). Verify this version is
+# still current with `helm search repo prometheus-community/kube-prometheus-stack --versions`
+# before first install — pin whatever's actually current at that time.
+apiVersion: v2
+name: monitoring
+description: Wrapper chart pulling in upstream kube-prometheus-stack, trimmed for a single-node local-OKD environment
+type: application
+version: 0.1.0
+appVersion: "0.77.x"
+dependencies:
+  - name: kube-prometheus-stack
+    version: "65.x"
+    repository: "https://prometheus-community.github.io/helm-charts"

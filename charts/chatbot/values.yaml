@@ -1,0 +1,106 @@
+n8n:
+  image:
+    # Self-contained image published by training-platform-chatbot-n8n's own
+    # docker-publish-n8n.yml (n8nio/n8n base + entrypoint.sh/bootstrap.js/the
+    # 5 workflow JSONs baked in via Dockerfile COPY) — not the bare upstream
+    # n8nio/n8n image anymore. No ConfigMap/bind-mount needed at deploy time.
+    repository: ghcr.io/youssefachraf/training-platform-chatbot-n8n
+    tag: ""                # set in environments/local-okd/chatbot-values.yaml — pin a real tag/digest, never floating `latest`
+    pullPolicy: IfNotPresent
+  service:
+    port: 5678
+  route:
+    host: ""                # set in environments/local-okd/chatbot-values.yaml, e.g. n8n-training-platform.apps-crc.testing
+    tlsTermination: edge
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  persistence:
+    size: 2Gi
+    storageClassName: ""
+  # Non-secret env, matches training-platform-chatbot-n8n's .env.example.
+  env:
+    GENERIC_TIMEZONE: "Africa/Casablanca"
+    N8N_WEBHOOK_URL: ""                          # set per environment — this chart's own Route URL + trailing slash
+    N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"         # required: HTTP Tool nodes read $env.BACKEND_API_URL from inside sub-nodes
+    BACKEND_API_URL: "http://backend:4000"        # internal ClusterIP Service DNS, not a Route — pod-to-pod traffic stays in-cluster
+    MCP_SERVER_URL: ""                            # optional, leave empty unless the SuperAdmin extended-tools MCP server is running
+    AI_BASE_URL: "https://api.openai.com/v1"
+    AI_MODEL: "gpt-4o-mini"
+    N8N_OWNER_EMAIL: "admin@localhost.local"       # non-secret half of the owner login; N8N_OWNER_PASSWORD is a secret, see below
+    # n8n's own built-in Prometheus metrics — already enabled in the source
+    # repo's .env (verified; ARCHITECTURE-PLAN.md's original claim that
+    # these were off was stale). Served at GET /metrics on the n8n pod.
+    N8N_METRICS: "true"
+    N8N_METRICS_INCLUDE_WORKFLOW_ID_LABEL: "true"
+    N8N_METRICS_INCLUDE_WORKFLOW_NAME_LABEL: "true"
+    N8N_METRICS_INCLUDE_WORKFLOW_STATISTICS: "true"
+    N8N_METRICS_INCLUDE_API_ENDPOINTS: "true"
+    N8N_METRICS_INCLUDE_API_PATH_LABEL: "true"
+    N8N_METRICS_INCLUDE_API_STATUS_CODE_LABEL: "true"
+    N8N_METRICS_INCLUDE_CACHE_METRICS: "true"
+
+redis:
+  image:
+    repository: redis
+    tag: "7-alpine"
+    pullPolicy: IfNotPresent
+  service:
+    name: chatbot-redis   # deliberately distinct name from backend's own redis Service — see ARCHITECTURE-PLAN.md §6, kept as two separate instances
+    port: 6379
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  persistence:
+    size: 1Gi
+    storageClassName: ""
+  # Same postgres:16-alpine-style arbitrary-UID risk applies to plain
+  # redis:7-alpine under restricted-v2 — fsGroup covers it. ARCHITECTURE-PLAN.md §4.
+  securityContext:
+    runAsNonRoot: true
+    fsGroup: 999
+
+metricsExporter:
+  image:
+    repository: ghcr.io/youssefachraf/training-platform-chatbot-n8n-metrics-exporter
+    tag: ""                 # pin a real tag/digest in environments/local-okd/chatbot-values.yaml
+    pullPolicy: IfNotPresent
+  service:
+    port: 9464
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  env:
+    EXPORTER_POLL_INTERVAL_SECONDS: "15"
+    EXPORTER_PORT: "9464"
+    AI_PRICE_PROMPT_PER_1M_USD: "0.10"
+    AI_PRICE_COMPLETION_PER_1M_USD: "0.40"
+  # Guarded behind charts/monitoring existing (build order step 6) — the
+  # ServiceMonitor CRD only exists once kube-prometheus-stack's operator is
+  # installed. Flip to true once charts/monitoring is applied.
+  serviceMonitor:
+    enabled: false
+
+# See "Design decision: Vault gets a values-flag toggle" — same pattern as
+# charts/backend. false: secrets come from secrets.existingSecretName.
+vault:
+  enabled: false
+  role: n8n-role
+  secretPath: training-platform/data/n8n
+
+secrets:
+  # Keys expected inside this Secret: N8N_ENCRYPTION_KEY, N8N_OWNER_PASSWORD,
+  # AI_API_KEY, REDIS_PASSWORD.
+  existingSecretName: chatbot-credentials
