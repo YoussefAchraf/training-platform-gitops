@@ -107,6 +107,8 @@ spec:
           volumeMounts:
             - name: n8n-data
               mountPath: /home/node/.n8n
+            - name: n8n-cache
+              mountPath: /home/node/.cache
           readinessProbe:
             httpGet:
               path: /healthz
@@ -125,3 +127,14 @@ spec:
         - name: n8n-data
           persistentVolumeClaim:
             claimName: n8n-data
+        - name: n8n-cache
+          # Real finding from an actual OKD deploy: /home/node/.cache is
+          # baked into the image owned by node:node (uid 1000), not
+          # group-0 writable, so it EACCES under OKD's arbitrary runtime
+          # UID. An emptyDir here is OKD-provisioned with the pod's own
+          # writable group, sidestepping the image's baked-in ownership -
+          # same trick Vault Agent Injector uses for its own sidecar's
+          # $HOME (visible as this same pod's home-init/home-sidecar
+          # volumes). Ephemeral by design: n8n's build cache doesn't need
+          # to survive a pod restart.
+          emptyDir: {}
