@@ -36,7 +36,7 @@ jobs:
 
       - uses: helm/kind-action@v1
 
-      - uses: azure/setup-helm@v4.3.1
+      - uses: azure/setup-helm@v5.0.1
         with:
           version: v3.16.4
 
