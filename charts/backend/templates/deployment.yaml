@@ -40,6 +40,18 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          {{- if .Values.vault.enabled }}
+          # Vault Agent writes DATABASE_URL/REDIS_URL/etc. to a FILE
+          # (/vault/secrets/env), not process env vars — the image's own
+          # CMD (pm2-runtime, no env-file loading of its own per
+          # ecosystem.config.js) never reads it without this override.
+          # Real finding from an actual OKD deploy: without this, the app
+          # starts with every Vault-delivered var silently undefined.
+          command:
+            - sh
+            - -c
+            - source /vault/secrets/env && exec node_modules/.bin/pm2-runtime ecosystem.config.js
+          {{- end }}
           ports:
             - name: http
               containerPort: 4000
