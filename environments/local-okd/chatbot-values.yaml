@@ -5,7 +5,10 @@
 # normal path.
 n8n:
   image:
-    tag: "REPLACE_WITH_PUBLISHED_N8N_IMAGE_TAG"   # ghcr.io/youssefachraf/training-platform-chatbot-n8n — pick the `sha-<short>` tag from a known-good docker-publish-n8n.yml run, not floating `latest`
+    # sha-3b74f6d = last successful docker-publish-n8n.yml run
+    # (2026-08-11T11:53:21Z) — confirmed pullable via `docker manifest
+    # inspect` 2026-08-11.
+    tag: "sha-3b74f6d"
   route:
     host: "n8n-training-platform.apps-crc.testing"   # replace with your local OKD's real Route subdomain
   env:
@@ -20,7 +23,10 @@ redis:
 
 metricsExporter:
   image:
-    tag: "REPLACE_WITH_PUBLISHED_METRICS_EXPORTER_TAG"
+    # sha-3ce4829 = last successful docker-publish.yml run
+    # (2026-08-11T14:01:36Z) — includes the Vault-env-sourcing fix
+    # (chatbot-n8n PR #7/#8). Confirmed pullable 2026-08-11.
+    tag: "sha-3ce4829"
 
 vault:
   enabled: true   # Vault (charts/vault) must be deployed and n8n-role configured BEFORE this app syncs — see docs/runbook.md, Vault now comes before chatbot in the build order
