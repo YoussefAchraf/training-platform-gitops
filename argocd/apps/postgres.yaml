@@ -1,0 +1,26 @@
+# Build order (ARCHITECTURE-PLAN.md §9, step 2): apply this and backend.yaml
+# first, once bootstrap/ is done — smoke-tests the OKD arbitrary-UID
+# question on the riskiest component before anything else is built on top.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: postgres
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/YoussefAchraf/training-platform-gitops.git
+    targetRevision: main
+    path: charts/postgres
+    helm:
+      valueFiles:
+        - ../../environments/local-okd/postgres-values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: training-platform
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
