@@ -1,6 +1,8 @@
-# Non-secret overrides for this environment only. Real values live in the
-# `backend-credentials` Secret — see backend-secrets.example.yaml and
-# docs/runbook.md, never here.
+# Non-secret overrides for this environment only. All secrets are
+# delivered by Vault (vault.enabled: true below) — see
+# docs/secrets-inventory.md and docs/runbook.md. backend-secrets.example.yaml
+# still exists as a bootstrap/disaster-recovery fallback only (e.g. if
+# Vault itself is ever down) — not the normal path.
 image:
   # Pin the actual published digest/tag from GHCR after PR #73/#74's fix —
   # never a floating `latest`, per CHANGES-PLAN.md's own conclusion that
@@ -23,4 +25,4 @@ env:
   VAPID_PUBLIC_KEY: "BNS64Kb9w84XhbJsqcwhqOt0djB-cwlZNXKNdgPmAlpcraWkSMfsNgkTzkyuBbA7L5Hq4C52Jcm9yWV8fLOhu58"
 
 vault:
-  enabled: false   # flip to true once charts/vault is applied and backend-role is configured — see docs/runbook.md §"Vault cutover"
+  enabled: true   # Vault (charts/vault) must be deployed and backend-role configured BEFORE this app syncs — see docs/runbook.md, Vault now comes before backend in the build order

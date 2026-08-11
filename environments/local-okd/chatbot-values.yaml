@@ -1,6 +1,8 @@
-# Non-secret overrides for this environment only. Real values live in the
-# `chatbot-credentials` Secret — see chatbot-secrets.example.yaml and
-# docs/runbook.md, never here.
+# Non-secret overrides for this environment only. All secrets are
+# delivered by Vault (vault.enabled: true below) — see
+# docs/secrets-inventory.md and docs/runbook.md. chatbot-secrets.example.yaml
+# still exists as a bootstrap/disaster-recovery fallback only — not the
+# normal path.
 n8n:
   image:
     tag: "REPLACE_WITH_PUBLISHED_N8N_IMAGE_TAG"   # ghcr.io/youssefachraf/training-platform-chatbot-n8n — pick the `sha-<short>` tag from a known-good docker-publish-n8n.yml run, not floating `latest`
@@ -21,4 +23,4 @@ metricsExporter:
     tag: "REPLACE_WITH_PUBLISHED_METRICS_EXPORTER_TAG"
 
 vault:
-  enabled: false   # flip to true once charts/vault is applied and n8n-role is configured — see docs/runbook.md §"Vault cutover"
+  enabled: true   # Vault (charts/vault) must be deployed and n8n-role configured BEFORE this app syncs — see docs/runbook.md, Vault now comes before chatbot in the build order

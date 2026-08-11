@@ -16,15 +16,10 @@ spec:
         app.kubernetes.io/name: metrics-exporter
         app.kubernetes.io/part-of: training-platform
       {{- if .Values.vault.enabled }}
-      # NOTE: unlike n8n's own entrypoint.sh, metrics-exporter's Dockerfile
-      # CMD (`node index.js`) doesn't source a file into its process env —
-      # Vault Agent writes N8N_OWNER_PASSWORD to /vault/secrets/env but
-      # nothing reads it. Needs either a small wrapper script added to
-      # metrics-exporter's Dockerfile (source /vault/secrets/env before
-      # exec node) or switching this container to Vault's "consul-template"
-      # env-var-injection mode instead of the file-template mode used here.
-      # Flagged as an open item for the vault.enabled cutover, not solved
-      # by this annotation alone.
+      # metrics-exporter's Dockerfile CMD sources /vault/secrets/env before
+      # exec'ing node (training-platform-chatbot-n8n PR #7/#8) — the file
+      # Vault Agent writes here now actually reaches the process. Requires
+      # an image built from that fix or later; see docs/runbook.md §4.
       annotations:
         vault.hashicorp.com/agent-inject: "true"
         vault.hashicorp.com/role: {{ .Values.vault.role | quote }}
