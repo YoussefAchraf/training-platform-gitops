@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: azure/setup-helm@v4.3.1
+      - uses: azure/setup-helm@v5.0.1
         with:
           version: v3.16.4
 
@@ -82,7 +82,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: azure/setup-helm@v4.3.1
+      - uses: azure/setup-helm@v5.0.1
         with:
           version: v3.16.4
 
@@ -116,7 +116,7 @@ jobs:
           directory: /tmp/rendered
 
       - name: checkov
-        uses: bridgecrewio/checkov-action@v12.1347.0
+        uses: bridgecrewio/checkov-action@v12.3115.0
         with:
           directory: /tmp/rendered
           framework: kubernetes
@@ -128,7 +128,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: azure/setup-helm@v4.3.1
+      - uses: azure/setup-helm@v5.0.1
         with:
           version: v3.16.4
 
