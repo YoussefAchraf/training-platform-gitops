@@ -59,10 +59,24 @@ jobs:
             --from-literal=postgres-password="ci-only-$(openssl rand -hex 8)"
 
       - name: helm install postgres
+        # runAsUser is set here, in the CI override only — never in the
+        # chart's own values.yaml. On real OKD, restricted-v2's SCC
+        # auto-assigns a random non-root UID from the namespace's
+        # allocated range regardless of what the pod spec says, which is
+        # exactly why the chart's default deliberately leaves runAsUser
+        # unset (policy/security.rego's own deny rule enforces this — a
+        # fixed runAsUser in the chart would fail that check). Plain kind
+        # has no equivalent auto-assignment mechanism, and PSA "restricted"
+        # requires runAsNonRoot: true, which the official postgres image
+        # can't satisfy from its own (root) default user alone — so this
+        # override simulates what OKD would have assigned, purely so this
+        # job can validate the fsGroup/PVC-write half of the arbitrary-UID
+        # story against a real cluster.
         run: |
           helm install postgres charts/postgres \
             --namespace training-platform \
             --set persistence.storageClassName=standard \
+            --set securityContext.runAsUser=1000710000 \
             --wait --timeout 3m
 
       - name: Confirm the pod is actually Ready under restricted PSA
