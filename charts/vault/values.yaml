@@ -1,0 +1,44 @@
+# Values passed straight through to the upstream hashicorp/vault chart
+# (nested under `vault:` because that's the dependency's alias/name).
+# Dev-mode, single pod — a deliberate choice for this local-OKD
+# learning/demo environment, not an oversight. See ARCHITECTURE-PLAN.md §5
+# "Dev-mode Vault caveat, stated plainly" before ever pointing this at
+# anything beyond a local cluster.
+vault:
+  server:
+    dev:
+      enabled: true
+      # Root token defaults to the upstream chart's own well-known dev
+      # value ("root") — intentionally not overridden here. Dev mode is
+      # already in-memory/auto-unsealed/single-pod; a "hidden" root token
+      # would be theater, not security, at this scope.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    # Dev mode's storage is in-memory — no PVC, data does not survive a pod
+    # restart. Acceptable for this environment per the caveat above; if this
+    # ever needs real persistence, dev.enabled must go false and dataStorage
+    # + ha.raft need to be configured for real, which roughly triples this
+    # chart's complexity (also per §5).
+    dataStorage:
+      enabled: false
+    ha:
+      enabled: false
+
+  injector:
+    enabled: true
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+
+  ui:
+    enabled: true
+    serviceType: ClusterIP   # reach via `oc port-forward` for admin use — no external Route for a dev-mode instance holding a well-known root token

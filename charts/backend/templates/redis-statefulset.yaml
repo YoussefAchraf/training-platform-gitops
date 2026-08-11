@@ -1,0 +1,71 @@
+# Backend's own dedicated redis (refresh tokens + rate limiting) —
+# deliberately separate from the chatbot's redis (charts/chatbot). See
+# ARCHITECTURE-PLAN.md §6 pod table: "redis (backend's)" and
+# "redis (chatbot's)" are two distinct pods/Services on purpose.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: backend-redis
+  labels:
+    app.kubernetes.io/name: backend-redis
+    app.kubernetes.io/part-of: training-platform
+spec:
+  serviceName: backend-redis
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: backend-redis
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: backend-redis
+        app.kubernetes.io/part-of: training-platform
+    spec:
+      securityContext:
+        {{- toYaml .Values.redis.securityContext | nindent 8 }}
+      containers:
+        - name: redis
+          image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+          imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command:
+            - redis-server
+            - "--requirepass"
+            - "$(REDIS_PASSWORD)"
+            - "--appendonly"
+            - "yes"
+          env:
+            # The REDIS_PASSWORD embedded inside backend's own REDIS_URL
+            # secret value must match this — see backend-secrets.example.yaml.
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecretName }}
+                  key: REDIS_PASSWORD
+          ports:
+            - name: redis
+              containerPort: 6379
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "redis-cli -a \"$REDIS_PASSWORD\" ping | grep -q PONG"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.redis.resources | nindent 12 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if .Values.redis.persistence.storageClassName }}
+        storageClassName: {{ .Values.redis.persistence.storageClassName }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.redis.persistence.size }}

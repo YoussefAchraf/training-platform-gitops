@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metrics-exporter
+  labels:
+    app.kubernetes.io/name: metrics-exporter
+    app.kubernetes.io/part-of: training-platform
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: metrics-exporter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: metrics-exporter
+        app.kubernetes.io/part-of: training-platform
+      {{- if .Values.vault.enabled }}
+      # NOTE: unlike n8n's own entrypoint.sh, metrics-exporter's Dockerfile
+      # CMD (`node index.js`) doesn't source a file into its process env —
+      # Vault Agent writes N8N_OWNER_PASSWORD to /vault/secrets/env but
+      # nothing reads it. Needs either a small wrapper script added to
+      # metrics-exporter's Dockerfile (source /vault/secrets/env before
+      # exec node) or switching this container to Vault's "consul-template"
+      # env-var-injection mode instead of the file-template mode used here.
+      # Flagged as an open item for the vault.enabled cutover, not solved
+      # by this annotation alone.
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: {{ .Values.vault.role | quote }}
+        vault.hashicorp.com/agent-inject-secret-env: {{ .Values.vault.secretPath | quote }}
+        vault.hashicorp.com/agent-inject-template-env: |
+          {{`{{- with secret "`}}{{ .Values.vault.secretPath }}{{`" -}}`}}
+          N8N_OWNER_PASSWORD={{`{{ .Data.data.n8n_owner_password }}`}}
+          {{`{{- end -}}`}}
+      {{- end }}
+    spec:
+      # metrics-exporter's Dockerfile has no USER directive — unverified
+      # against restricted-v2, same open-item category as postgres/redis
+      # before their fix. runAsNonRoot here will make the pod fail fast and
+      # visibly (rather than silently running as root) if the image can't
+      # comply — smoke-test during build-order step 3, per the build plan.
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: metrics-exporter
+          image: "{{ .Values.metricsExporter.image.repository }}:{{ .Values.metricsExporter.image.tag }}"
+          imagePullPolicy: {{ .Values.metricsExporter.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: metrics
+              containerPort: 9464
+          env:
+            {{- range $key, $value := .Values.metricsExporter.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            - name: N8N_BASE_URL
+              value: "http://n8n:{{ .Values.n8n.service.port }}"
+            - name: N8N_OWNER_EMAIL
+              value: {{ .Values.n8n.env.N8N_OWNER_EMAIL | quote }}
+            {{- if not .Values.vault.enabled }}
+            - name: N8N_OWNER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecretName }}
+                  key: N8N_OWNER_PASSWORD
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.metricsExporter.resources | nindent 12 }}
