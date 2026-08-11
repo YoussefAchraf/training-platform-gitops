@@ -1,0 +1,5 @@
+# Non-secret overrides for this environment only. Real password lives in
+# the `postgres-credentials` Secret — see postgres-secrets.example.yaml and
+# docs/runbook.md, never here.
+persistence:
+  storageClassName: ""   # set after `oc get storageclass` on your local OKD install
