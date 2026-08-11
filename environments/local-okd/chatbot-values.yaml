@@ -1,0 +1,24 @@
+# Non-secret overrides for this environment only. Real values live in the
+# `chatbot-credentials` Secret — see chatbot-secrets.example.yaml and
+# docs/runbook.md, never here.
+n8n:
+  image:
+    tag: "REPLACE_WITH_PUBLISHED_N8N_IMAGE_TAG"   # ghcr.io/youssefachraf/training-platform-chatbot-n8n — pick the `sha-<short>` tag from a known-good docker-publish-n8n.yml run, not floating `latest`
+  route:
+    host: "n8n-training-platform.apps-crc.testing"   # replace with your local OKD's real Route subdomain
+  env:
+    N8N_WEBHOOK_URL: "https://n8n-training-platform.apps-crc.testing/"   # must match n8n.route.host above, trailing slash required
+    N8N_OWNER_EMAIL: "admin@localhost.local"          # change before exposing this instance beyond your own machine
+  persistence:
+    storageClassName: ""   # set after `oc get storageclass`
+
+redis:
+  persistence:
+    storageClassName: ""
+
+metricsExporter:
+  image:
+    tag: "REPLACE_WITH_PUBLISHED_METRICS_EXPORTER_TAG"
+
+vault:
+  enabled: false   # flip to true once charts/vault is applied and n8n-role is configured — see docs/runbook.md §"Vault cutover"

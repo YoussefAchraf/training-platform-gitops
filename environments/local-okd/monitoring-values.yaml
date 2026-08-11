@@ -1,0 +1,5 @@
+# No overrides needed yet — charts/monitoring/values.yaml's trimmed
+# single-node defaults already target this environment. Confirm
+# `oc get storageclass` before first apply and set a storageClassName here
+# under kube-prometheus-stack.prometheus.prometheusSpec.storageSpec if the
+# cluster's default StorageClass isn't already correct.
