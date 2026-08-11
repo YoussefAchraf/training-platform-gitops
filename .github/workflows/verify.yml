@@ -111,7 +111,7 @@ jobs:
         # policy/security.rego (the `policy` job) is the hard-fail gate;
         # this is a broader, noisier cross-check on top of it.
         continue-on-error: true
-        uses: stackrox/kube-linter-action@v1.0.4
+        uses: stackrox/kube-linter-action@v1.0.7
         with:
           directory: /tmp/rendered
 
