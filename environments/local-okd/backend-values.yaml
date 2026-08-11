@@ -4,12 +4,11 @@
 # still exists as a bootstrap/disaster-recovery fallback only (e.g. if
 # Vault itself is ever down) — not the normal path.
 image:
-  # Pin the actual published digest/tag from GHCR after PR #73/#74's fix —
-  # never a floating `latest`, per CHANGES-PLAN.md's own conclusion that
-  # deploying `latest` risked pulling a pre-fix image. Replace with the
-  # real tag once confirmed from the training-platform-backend repo's
-  # published GHCR packages.
-  tag: "REPLACE_WITH_PUBLISHED_MAIN_TAG_OR_DIGEST"
+  # sha-a3ef347 = main@a3ef347 (PR #74, includes the PM2_HOME group-0 fix
+  # from PR #73) — confirmed pullable via `docker manifest inspect`
+  # 2026-08-11. Never a floating `latest`, per CHANGES-PLAN.md's own
+  # conclusion that risked pulling a pre-fix image.
+  tag: "sha-a3ef347"
 
 route:
   host: "api-training-platform.apps-crc.testing"   # replace with your local OKD's real Route subdomain
