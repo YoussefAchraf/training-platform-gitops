@@ -18,6 +18,8 @@ route:
 # PR #73/#74 — this securityContext is the k8s-side half of that fix.
 securityContext:
   runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault   # required by the Restricted Pod Security Standard / OKD's restricted-v2 SCC — see charts/postgres/values.yaml for how this was actually caught (a live kind-cluster deploy under PSA "restricted")
 containerSecurityContext:
   allowPrivilegeEscalation: false
   capabilities:
@@ -88,6 +90,8 @@ redis:
   securityContext:
     runAsNonRoot: true
     fsGroup: 999
+    seccompProfile:
+      type: RuntimeDefault
 
 migration:
   # Mirrors docker-compose's `migrate` one-shot service exactly: same image,

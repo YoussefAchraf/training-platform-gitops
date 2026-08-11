@@ -67,6 +67,8 @@ redis:
   securityContext:
     runAsNonRoot: true
     fsGroup: 999
+    seccompProfile:
+      type: RuntimeDefault
 
 metricsExporter:
   image:

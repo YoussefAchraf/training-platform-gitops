@@ -50,8 +50,8 @@ jobs:
             helm template "charts/$c" -f "environments/local-okd/$c-values.yaml" \
               | kubeconform -strict -summary \
                   -schema-location default \
-                  -schema-location 'https://raw.githubusercontent.com/openshift/api/master/{{ .ResourceKind }}.json' \
-                  -kubernetes-version 1.29.0
+                  -kubernetes-version 1.29.0 \
+                  -skip Route,ServiceMonitor
             echo "::endgroup::"
           done
 

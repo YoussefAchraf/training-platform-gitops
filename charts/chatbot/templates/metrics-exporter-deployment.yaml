@@ -42,6 +42,8 @@ spec:
       # comply — smoke-test during build-order step 3, per the build plan.
       securityContext:
         runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: metrics-exporter
           image: "{{ .Values.metricsExporter.image.repository }}:{{ .Values.metricsExporter.image.tag }}"

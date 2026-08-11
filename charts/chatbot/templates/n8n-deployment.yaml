@@ -34,6 +34,8 @@ spec:
       securityContext:
         runAsNonRoot: true
         fsGroup: 1000   # n8n's own image runs as uid 1000 (node); group-0/fsGroup makes the PVC writable under OKD's assigned UID too
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: n8n
           image: "{{ .Values.n8n.image.repository }}:{{ .Values.n8n.image.tag }}"

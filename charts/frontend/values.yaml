@@ -16,6 +16,8 @@ route:
 # convention — no fsGroup/chgrp fix needed, unlike backend. ARCHITECTURE-PLAN.md §4.
 securityContext:
   runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
 containerSecurityContext:
   allowPrivilegeEscalation: false
   capabilities:
