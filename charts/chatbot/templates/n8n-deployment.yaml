@@ -32,6 +32,15 @@ spec:
           {{`{{- end -}}`}}
       {{- end }}
     spec:
+      # Real finding from an actual OKD deploy: Kubernetes' Docker-links
+      # compatibility feature (default-on) injects an env var per Service
+      # in the namespace, and since this Service is named "n8n" it injects
+      # N8N_PORT=tcp://<cluster-ip>:5678 into this pod — colliding with
+      # n8n's own N8N_PORT config var, which expects a bare port number
+      # ("Invalid number value for N8N_PORT: tcp://..."). Disabling service
+      # links is the standard fix for this well-known n8n-on-Kubernetes
+      # footgun.
+      enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
         # fsGroup deliberately unset — a hardcoded value (even one matching
@@ -57,6 +66,14 @@ spec:
             - name: http
               containerPort: 5678
           env:
+            # Real finding from an actual OKD deploy: OKD runs this
+            # container as an arbitrary, non-passwd UID (restricted-v2
+            # SCC), so $HOME resolves to "/" instead of the image's node
+            # user's home — n8n then tries (and fails, EACCES) to create
+            # its settings dir at /.n8n instead of the mounted
+            # /home/node/.n8n. Same class of bug as backend's PM2_HOME fix.
+            - name: HOME
+              value: /home/node
             {{- range $key, $value := .Values.n8n.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
