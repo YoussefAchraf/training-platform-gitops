@@ -1,10 +1,11 @@
 image:
-  # Must be rebuilt from training-platform-frontend with --build-arg
-  # VITE_API_URL / VITE_CHATBOT_WEBHOOK_URL / VITE_VAPID_PUBLIC_KEY pointed
-  # at THIS file's route.host / the chatbot's route host — see the
-  # ARCHITECTURE-PLAN.md §6 build-arg caveat and docs/runbook.md. This
-  # chart cannot fix that at deploy time.
-  tag: "REPLACE_WITH_LOCAL_OKD_BUILD_TAG"
+  # Built 2026-08-11 with --build-arg VITE_API_URL/VITE_CHATBOT_WEBHOOK_URL/
+  # VITE_VAPID_PUBLIC_KEY pointed at this environment's real Route hosts
+  # (below), then pushed to ghcr.io/youssefachraf/training-platform-frontend.
+  # Must be rebuilt again (see docs/runbook.md §5) if either Route host ever
+  # changes — this chart cannot fix that at deploy time, the build-arg
+  # values are baked into the JS bundle at image build time.
+  tag: "local-okd"
 
 route:
   host: "training-platform.apps-crc.testing"   # replace with your local OKD's real Route subdomain

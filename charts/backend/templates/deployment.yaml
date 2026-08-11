@@ -18,6 +18,12 @@ spec:
       {{- if .Values.vault.enabled }}
       annotations:
         vault.hashicorp.com/agent-inject: "true"
+        # Real finding from an actual OKD deploy: the injector hardcodes
+        # runAsUser: 100 on its own injected init/sidecar containers by
+        # default, rejected by restricted-v2 exactly like any other fixed
+        # UID would be. This is the documented Vault annotation for that
+        # exact case — let OKD's SCC assign the sidecar's UID too.
+        vault.hashicorp.com/agent-set-security-context: "false"
         vault.hashicorp.com/role: {{ .Values.vault.role | quote }}
         vault.hashicorp.com/agent-inject-secret-env: {{ .Values.vault.secretPath | quote }}
         vault.hashicorp.com/agent-inject-template-env: |
@@ -40,6 +46,26 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          {{- if .Values.vault.enabled }}
+          # Vault Agent writes DATABASE_URL/REDIS_URL/etc. to a FILE
+          # (/vault/secrets/env), not process env vars — the image's own
+          # CMD (pm2-runtime, no env-file loading of its own per
+          # ecosystem.config.js) never reads it without this override.
+          # Real finding from an actual OKD deploy: without this, the app
+          # starts with every Vault-delivered var silently undefined.
+          # `set -a` is not optional here — plain `source file` only sets
+          # shell-local variables, NOT environment variables, so an
+          # `exec`'d child process (or ANY child process) never actually
+          # inherits them without it. Confirmed the hard way: the first
+          # version of this fix (source && exec, no set -a) rendered and
+          # deployed fine but silently left DATABASE_URL undefined the
+          # entire time — `set -a` makes every following assignment
+          # auto-exported until `set +a` turns it back off.
+          command:
+            - sh
+            - -c
+            - set -a && source /vault/secrets/env && set +a && exec node_modules/.bin/pm2-runtime ecosystem.config.js
+          {{- end }}
           ports:
             - name: http
               containerPort: 4000
