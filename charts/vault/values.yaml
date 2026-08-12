@@ -49,6 +49,82 @@ vault:
         container:
           allowPrivilegeEscalation: false
 
+    # Real finding, hit 3 times in one session: Vault dev mode's storage is
+    # in-memory (see dataStorage.enabled: false above) - every restart of
+    # this pod, for ANY reason (helm upgrade, node reboot, a disk-pressure
+    # eviction), wipes the kubernetes auth method, both roles, both
+    # policies, and the KV mount itself. Previously this needed 10+ manual
+    # `vault write`/`vault policy write` commands typed by hand, every
+    # single time. A Helm hook Job would NOT actually fix this - hooks only
+    # fire on an explicit `helm install`/`upgrade`, not on a spontaneous
+    # pod restart with no Helm command involved (exactly what caused all 3
+    # real occurrences). An init container doesn't work either - it runs
+    # BEFORE the main vault-server container starts, so it can't call an
+    # API that isn't listening yet. A sidecar (extraContainers, sharing the
+    # pod's network namespace) is the one thing that actually runs every
+    # time this pod starts for any reason, once vault-server is already up.
+    #
+    # Deliberately does NOT reseed actual secret values (JWT_SECRET,
+    # passwords, the AI proxy key) - those come from this machine's local
+    # .env files via scripts/vault-seed.js, which has no access to files
+    # outside the cluster. Still needs a manual `node scripts/vault-seed.js`
+    # run once after any restart. This sidecar only rebuilds the
+    # *structure* Vault needs to accept and deliver those values: the
+    # kubernetes auth method, the KV-v2 mount, both roles, both policies.
+    extraContainers:
+      - name: vault-auth-bootstrap
+        image: "hashicorp/vault:1.17.2"
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            set -e
+            export VAULT_ADDR=http://127.0.0.1:8200
+
+            echo "[vault-auth-bootstrap] waiting for vault to be up and unsealed..."
+            until vault status >/dev/null 2>&1; do sleep 2; done
+
+            export VAULT_TOKEN=root
+
+            if vault auth list -format=json 2>/dev/null | grep -q '"kubernetes/"'; then
+              echo "[vault-auth-bootstrap] kubernetes auth already configured, nothing to do."
+            else
+              echo "[vault-auth-bootstrap] configuring kubernetes auth, KV mount, policies, roles..."
+
+              vault auth enable kubernetes
+
+              vault write auth/kubernetes/config \
+                kubernetes_host="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}" \
+                kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+                token_reviewer_jwt=@/var/run/secrets/kubernetes.io/serviceaccount/token
+
+              vault secrets enable -path=training-platform -version=2 kv || true
+
+              printf 'path "training-platform/data/backend" {\n  capabilities = ["read"]\n}\n' | vault policy write backend-policy -
+
+              printf 'path "training-platform/data/n8n" {\n  capabilities = ["read"]\n}\n' | vault policy write n8n-policy -
+
+              vault write auth/kubernetes/role/backend-role \
+                bound_service_account_names=backend \
+                bound_service_account_namespaces=training-platform \
+                policies=backend-policy \
+                ttl=3600
+
+              vault write auth/kubernetes/role/n8n-role \
+                bound_service_account_names=default \
+                bound_service_account_namespaces=training-platform \
+                policies=n8n-policy \
+                ttl=3600
+
+              echo "[vault-auth-bootstrap] done."
+              echo "[vault-auth-bootstrap] REMINDER: run 'node scripts/vault-seed.js' now to seed real secret values - this sidecar only rebuilds structure, never secret data."
+            fi
+
+            sleep infinity
+
   injector:
     enabled: true
     resources:
