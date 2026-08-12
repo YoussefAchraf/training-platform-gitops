@@ -1,6 +1,8 @@
 # Requires kube-prometheus-stack's ServiceMonitor CRD — only apply once
 # charts/monitoring is installed (build order step 6). Off by default.
-{{- if .Values.metricsExporter.serviceMonitor.enabled }}
+# Also requires metricsExporter.enabled (no point scraping a Service that
+# doesn't exist because the exporter itself is disabled).
+{{- if and .Values.metricsExporter.enabled .Values.metricsExporter.serviceMonitor.enabled }}
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:

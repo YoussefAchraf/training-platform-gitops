@@ -30,6 +30,10 @@ redis:
     storageClassName: ""
 
 metricsExporter:
+  # Disabled per explicit request: n8n chatbot only, no metrics/cost
+  # sidecar for now. Its only consumer (Prometheus) isn't deployed here
+  # either — see docs/runbook.md §6 if that changes later.
+  enabled: false
   image:
     # sha-5439b44 = last successful docker-publish.yml run
     # (2026-08-11T18:45:20Z) — includes the set -a/set +a Vault env-export
