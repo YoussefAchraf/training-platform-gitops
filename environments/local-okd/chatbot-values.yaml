@@ -15,6 +15,13 @@ n8n:
   env:
     N8N_WEBHOOK_URL: "https://n8n-training-platform.apps-crc.testing/"   # must match n8n.route.host above, trailing slash required
     N8N_OWNER_EMAIL: "admin@localhost.local"          # change before exposing this instance beyond your own machine
+    # Not secret (just an endpoint URL) — the actual key is Vault-delivered
+    # (n8n_ai_api_key). Real finding: bootstrap.js defaults AI_BASE_URL to
+    # real OpenAI's endpoint when unset, so a KodeKloud/other proxy API key
+    # gets silently rejected by OpenAI itself with a generic "Incorrect API
+    # key" 401 — this was never wired through to the cluster before, only
+    # ever set in the local .env used by docker-compose.
+    AI_BASE_URL: "https://api.ai.kodekloud.com/v1"
   persistence:
     storageClassName: ""   # set after `oc get storageclass`
 
