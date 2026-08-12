@@ -72,6 +72,11 @@ redis:
       type: RuntimeDefault
 
 metricsExporter:
+  # Same values-flag toggle pattern as vault.enabled below — set to false
+  # to run n8n on its own with no metrics/cost-tracking sidecar service at
+  # all (its only consumer is Prometheus via the ServiceMonitor below,
+  # which is itself gated off until charts/monitoring exists).
+  enabled: true
   image:
     repository: ghcr.io/youssefachraf/training-platform-chatbot-n8n-metrics-exporter
     tag: ""                 # pin a real tag/digest in environments/local-okd/chatbot-values.yaml
