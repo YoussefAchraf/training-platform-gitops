@@ -1,3 +1,4 @@
+{{- if .Values.metricsExporter.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -13,3 +14,4 @@ spec:
     - name: metrics
       port: {{ .Values.metricsExporter.service.port }}
       targetPort: metrics
+{{- end }}
