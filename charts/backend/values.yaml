@@ -99,3 +99,29 @@ migration:
   # Mirrors docker-compose's `migrate` one-shot service exactly: same image,
   # same command, run as a Helm hook before the Deployment rolls out.
   command: ["node", "dist/infrastructure/database/migrate.js"]
+  # Real finding from an actual OKD deploy: this Job was reusing the main
+  # Deployment's `resources` (100m/256Mi, sized for an always-on API
+  # server), and the Vault Agent Injector's own init-container default
+  # (250m/250Mi, undocumented anywhere in this repo until now) stacked on
+  # top of that - together enough to leave this one-shot Job Pending for
+  # over an hour on a resource-tight single-node cluster, even though it
+  # only ever runs a handful of SQL statements once per deploy. Both are
+  # sized down below, dedicated to this Job alone.
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  # Overrides for the Vault Agent Injector's init-container defaults
+  # (250m cpu / 250Mi mem otherwise) - see vault.hashicorp.com/agent-init-*
+  # annotations in migrate-job.yaml. Same reasoning: a single secret fetch
+  # doesn't need anywhere near the injector's default footprint.
+  vaultAgentResources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
