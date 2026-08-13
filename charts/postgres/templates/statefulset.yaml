@@ -16,7 +16,28 @@ spec:
       labels:
         app.kubernetes.io/name: postgres
         app.kubernetes.io/part-of: training-platform
+      {{- if .Values.vault.enabled }}
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/agent-set-security-context: "false"
+        vault.hashicorp.com/role: {{ .Values.vault.role | quote }}
+        # Named (not -env) injection: writes just the raw password value to
+        # /vault/secrets/postgres-password, no KEY=VALUE formatting - the
+        # official postgres image reads a plain-value file natively via
+        # POSTGRES_PASSWORD_FILE, no custom entrypoint/command override
+        # needed (unlike backend/chatbot, which both need a shell wrapper
+        # to source an env-style file - postgres's own image already
+        # supports this pattern directly).
+        vault.hashicorp.com/agent-inject-secret-postgres-password: {{ .Values.vault.secretPath | quote }}
+        vault.hashicorp.com/agent-inject-template-postgres-password: |
+          {{`{{- with secret "`}}{{ .Values.vault.secretPath }}{{`" -}}`}}
+          {{`{{ .Data.data.postgres_password }}`}}
+          {{`{{- end -}}`}}
+      {{- end }}
     spec:
+      {{- if .Values.vault.enabled }}
+      serviceAccountName: postgres
+      {{- end }}
       securityContext:
         {{- toYaml .Values.securityContext | nindent 8 }}
       containers:
@@ -33,11 +54,24 @@ spec:
               value: {{ .Values.postgresDb | quote }}
             - name: POSTGRES_USER
               value: {{ .Values.postgresUser | quote }}
+            {{- if .Values.vault.enabled }}
+            # POSTGRES_PASSWORD_FILE is the official postgres image's own
+            # supported mechanism for a file-based password (see
+            # postgres-entrypoint.sh upstream) - only consulted during
+            # initdb on a genuinely empty data directory, same as
+            # POSTGRES_PASSWORD itself. Does not retroactively change an
+            # already-initialized database's password on every restart;
+            # only affects a fresh volume. An existing database's password
+            # is changed the normal way (ALTER ROLE), not by this file.
+            - name: POSTGRES_PASSWORD_FILE
+              value: /vault/secrets/postgres-password
+            {{- else }}
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.existingSecret }}
                   key: postgres-password
+            {{- end }}
             # postgres:16-alpine's default PGDATA (/var/lib/postgresql/data)
             # is the PVC mount root itself, which contains a lost+found dir
             # on some CSI drivers and makes initdb refuse to start. Point

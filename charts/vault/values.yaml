@@ -107,6 +107,14 @@ vault:
 
               printf 'path "training-platform/data/n8n" {\n  capabilities = ["read"]\n}\n' | vault policy write n8n-policy -
 
+              # Deliberately its own path/policy, not read access to
+              # training-platform/data/backend (which also holds JWT_SECRET,
+              # SMTP creds, etc.) - postgres only ever needs its own
+              # password, never backend's other secrets. Least-privilege,
+              # and keeps postgres's Vault role revocable independently of
+              # backend's.
+              printf 'path "training-platform/data/postgres" {\n  capabilities = ["read"]\n}\n' | vault policy write postgres-policy -
+
               vault write auth/kubernetes/role/backend-role \
                 bound_service_account_names=backend \
                 bound_service_account_namespaces=training-platform \
@@ -117,6 +125,12 @@ vault:
                 bound_service_account_names=default \
                 bound_service_account_namespaces=training-platform \
                 policies=n8n-policy \
+                ttl=3600
+
+              vault write auth/kubernetes/role/postgres-role \
+                bound_service_account_names=postgres \
+                bound_service_account_namespaces=training-platform \
+                policies=postgres-policy \
                 ttl=3600
 
               echo "[vault-auth-bootstrap] done."

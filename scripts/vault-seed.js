@@ -131,6 +131,20 @@ async function main() {
   });
   console.log('  -> training-platform/data/backend written (6 keys)');
 
+  // postgres's own dedicated path (charts/postgres/templates/statefulset.yaml,
+  // vault.enabled) - deliberately the SAME POSTGRES_PASSWORD value just
+  // written above for backend, not independently generated, so the two can
+  // never drift apart again. Real finding from an actual OKD deploy: a
+  // manually-created postgres-credentials Secret using a different,
+  // separately-generated password than what backend/Vault expected cost
+  // hours of debugging ("password authentication failed") before the two
+  // were discovered to simply be different values that happened to both
+  // look valid.
+  await vaultKvPut('training-platform/postgres', {
+    postgres_password: backendEnv.POSTGRES_PASSWORD,
+  });
+  console.log('  -> training-platform/data/postgres written (1 key, same value as backend\'s postgres_password)');
+
   console.log(`Reading ${CHATBOT_REPO}/.env ...`);
   const chatbotEnv = parseEnvFile(path.join(CHATBOT_REPO, '.env'));
   requireKeys(chatbotEnv, ['N8N_ENCRYPTION_KEY', 'N8N_OWNER_PASSWORD', 'AI_API_KEY', 'REDIS_PASSWORD'], `${CHATBOT_REPO}/.env`);
