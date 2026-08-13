@@ -86,6 +86,32 @@ spec:
             limits:
               cpu: 100m
               memory: 64Mi
+          # Real finding from an actual OKD deploy: the upstream chart's own
+          # default redis.securityContext (pod-level) hardcodes
+          # runAsUser: 999 (the standard redis image's built-in UID) - same
+          # bug class already fixed for the one-time vendored bootstrap
+          # manifest (bootstrap/argocd-cluster-install.yaml's own header),
+          # but that fix never carried over to THIS Helm-based self-sync
+          # path, since it's a separate values source (upstream
+          # argo-helm/argo-cd chart defaults, not our own manifest). OKD's
+          # restricted-v2/v3 SCCs reject any fixed UID outside the
+          # namespace's own allocated range, so every sync attempt using
+          # the chart's default permanently fails SCC validation (confirmed
+          # live: a stuck ReplicaSet stays at 0/0/0 forever, FailedCreate -
+          # the secret-init initContainer is in this same pod and fails
+          # identically, it has no runAsUser of its own to override).
+          # Key verified directly against the chart source for this exact
+          # pinned version (charts/argo-cd/values.yaml @ argo-cd-7.7.23,
+          # matching this Application's targetRevision: 7.7.x) - it's
+          # `redis.securityContext`, not `podSecurityContext`. Setting
+          # runAsUser to null removes the key from the merged values
+          # entirely (Helm's own values-merge semantics delete a base key
+          # when the override is explicitly null), letting OKD auto-assign
+          # an in-range UID instead. runAsNonRoot: true (the chart's other
+          # default alongside it) is left untouched and is already
+          # satisfied by any UID OKD assigns.
+          securityContext:
+            runAsUser: null
         redisSecretInit:
           resources:
             requests:
