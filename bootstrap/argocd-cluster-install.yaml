@@ -16,17 +16,34 @@
 # hands these same objects to ArgoCD's own Helm-based self-management,
 # the chart's selector convention *requires* `instance` too, and
 # `spec.selector` on a Deployment/StatefulSet is immutable once created.
-# There is no patch that fixes (2) after the fact - the only fix is
-# never creating these objects with the wrong selector in the first
-# place, which is what the two changes below do
-# (`app.kubernetes.io/instance: argocd` added to every workload's
-# selector + pod template labels, both hardcoded runAsUser values
-# removed) compared to the unmodified upstream file.
+# (3) five of the seven workloads' main container is named `argocd-X`
+# (e.g. `argocd-server`) in the raw manifest, but the Helm chart names
+# the same container just `X` (e.g. `server` - confirmed against the
+# chart's own values.yaml, one values key per component). Since
+# `containers` is a list keyed by name, once ArgoCD's Helm-based sync
+# successfully patches these objects (after fixes 1+2 stop blocking it
+# outright), the mismatched name makes it *add* a second container
+# instead of replacing the first - both then crash fighting over the
+# same port. redis and dex-server were not affected by (3): the raw
+# manifest already happens to name their containers `redis`/`dex-server`,
+# matching the chart's own values exactly.
+#
+# There is no patch that fixes any of these three after the fact for an
+# already-created object - (2) and (3) both require the object to never
+# have been created wrong in the first place. The three changes below
+# (vs. the unmodified upstream file) are: `app.kubernetes.io/instance:
+# argocd` added to every workload's selector + pod template labels, both
+# hardcoded runAsUser values removed, and the five mismatched container
+# names renamed to match the Helm chart's values.yaml exactly.
 #
 # To refresh this file against a newer upstream release: fetch
 # https://raw.githubusercontent.com/argoproj/argo-cd/<tag>/manifests/
-# install.yaml, then re-apply both fixes above before committing - do not
-# swap in the raw upstream file unmodified, that reintroduces both bugs.
+# install.yaml, then re-apply all three fixes above before committing -
+# do not swap in the raw upstream file unmodified, that reintroduces all
+# three bugs. Re-verify container names against
+# https://github.com/argoproj/argo-helm/blob/argo-cd-<chart-version>/
+# charts/argo-cd/values.yaml (search each component's `name:` key) since
+# the chart's own naming could change between versions.
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
@@ -32123,7 +32140,7 @@ spec:
               optional: true
         image: quay.io/argoproj/argocd:v3.5.1
         imagePullPolicy: Always
-        name: argocd-applicationset-controller
+        name: applicationset-controller
         ports:
         - containerPort: 7000
           name: webhook
@@ -32421,7 +32438,7 @@ spec:
         livenessProbe:
           tcpSocket:
             port: 9001
-        name: argocd-notifications-controller
+        name: notifications-controller
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -32859,7 +32876,7 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 30
           timeoutSeconds: 5
-        name: argocd-repo-server
+        name: repo-server
         ports:
         - containerPort: 8081
         - containerPort: 8084
@@ -33381,7 +33398,7 @@ spec:
           initialDelaySeconds: 3
           periodSeconds: 30
           timeoutSeconds: 5
-        name: argocd-server
+        name: server
         ports:
         - containerPort: 8080
         - containerPort: 8083
@@ -33845,7 +33862,7 @@ spec:
           value: /tmp/kubecache
         image: quay.io/argoproj/argocd:v3.5.1
         imagePullPolicy: Always
-        name: argocd-application-controller
+        name: application-controller
         ports:
         - containerPort: 8082
         readinessProbe:
