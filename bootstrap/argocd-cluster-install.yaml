@@ -26,21 +26,47 @@
 # instead of replacing the first - both then crash fighting over the
 # same port. redis and dex-server were not affected by (3): the raw
 # manifest already happens to name their containers `redis`/`dex-server`,
-# matching the chart's own values exactly.
+# matching the chart's own values exactly. (4) repo-server's `copyutil`
+# init container ran a `sh -c "cp ... && ln -sf ..."` one-liner (command:
+# [sh, -c] + args: [the string]) in the raw manifest, but the chart's own
+# template for the identical container uses a plain `command: [/bin/cp,
+# -n, ...]` with no `args` at all. Since the chart's sync never mentions
+# `args`, it has no basis to know it should clear the raw manifest's
+# leftover `args` field - both `command` and the stale `args` persist
+# together, and Kubernetes runs them concatenated: the whole `args`
+# string gets appended as a literal extra argument to `cp`, which then
+# fails ("No such file or directory") because that giant string isn't a
+# real path. dex-server's own copyutil was checked against the chart
+# too and found already identical - no fix needed there.
 #
-# There is no patch that fixes any of these three after the fact for an
-# already-created object - (2) and (3) both require the object to never
-# have been created wrong in the first place. The three changes below
-# (vs. the unmodified upstream file) are: `app.kubernetes.io/instance:
-# argocd` added to every workload's selector + pod template labels, both
-# hardcoded runAsUser values removed, and the five mismatched container
-# names renamed to match the Helm chart's values.yaml exactly.
+# There is no patch that fixes any of these four after the fact for an
+# already-created object - (2), (3), and (4) all require the object to
+# never have been created wrong in the first place (immutable selector
+# for (2); stale list/field entries an unrelated sync can't know to
+# clear for (3) and (4)). The changes below (vs. the unmodified upstream
+# file): `app.kubernetes.io/instance: argocd` added to every workload's
+# selector + pod template labels, both hardcoded runAsUser values
+# removed, the five mismatched container names renamed to match the
+# Helm chart's values.yaml exactly, and repo-server's copyutil init
+# container rewritten to match the chart's plain-command form exactly
+# (no command+args split).
+#
+# redis's raw-manifest init container (`secret-init`, runs `argocd admin
+# redis-initial-password`) has NO chart-side equivalent at all - the
+# chart only adds redis init containers if `.Values.redis.initContainers`
+# is explicitly set, which nothing in this repo does. Left as-is
+# deliberately: unlike (1)-(4), an extra container Helm doesn't know
+# about gets pruned cleanly on sync (redis's initial password already
+# lives in the argocd-redis secret Helm also manages), not merged into
+# something broken - a fundamentally different, lower-risk situation
+# than the four fixed above. Re-verify this still holds if this file is
+# ever refreshed against a newer chart/upstream version.
 #
 # To refresh this file against a newer upstream release: fetch
 # https://raw.githubusercontent.com/argoproj/argo-cd/<tag>/manifests/
-# install.yaml, then re-apply all three fixes above before committing -
+# install.yaml, then re-apply all four fixes above before committing -
 # do not swap in the raw upstream file unmodified, that reintroduces all
-# three bugs. Re-verify container names against
+# four bugs. Re-verify container names against
 # https://github.com/argoproj/argo-helm/blob/argo-cd-<chart-version>/
 # charts/argo-cd/values.yaml (search each component's `name:` key) since
 # the chart's own naming could change between versions.
@@ -32917,12 +32943,11 @@ spec:
         - mountPath: /home/argocd/params
           name: argocd-cmd-params-cm
       initContainers:
-      - args:
-        - /bin/cp /usr/local/bin/argocd /var/run/argocd/argocd && /bin/ln -sf /var/run/argocd/argocd
-          /var/run/argocd/argocd-cmp-server
-        command:
-        - sh
-        - -c
+      - command:
+        - /bin/cp
+        - -n
+        - /usr/local/bin/argocd
+        - /var/run/argocd/argocd-cmp-server
         image: quay.io/argoproj/argocd:v3.5.1
         name: copyutil
         securityContext:
