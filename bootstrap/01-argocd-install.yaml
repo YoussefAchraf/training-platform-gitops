@@ -45,10 +45,18 @@ spec:
           resources:
             requests:
               cpu: 100m
-              memory: 128Mi
+              memory: 256Mi
             limits:
               cpu: 500m
-              memory: 512Mi
+              # Real finding, same night: 512Mi looked generous on paper but
+              # the controller OOM-killed (exit 137) within 8s of every
+              # restart once repo-server became reachable again after a
+              # long outage - rebuilding its full resource-tree cache in
+              # one burst needs real headroom, even though steady-state
+              # usage afterward is far lower. Bumped both request and
+              # limit; verified stable for 10+ minutes post-fix with 0
+              # restarts before this was committed.
+              memory: 1Gi
         dex:
           resources:
             requests:
@@ -74,9 +82,15 @@ spec:
               cpu: 50m
               memory: 32Mi
         repoServer:
+          # Trimmed from 100m to 75m immediately after applying this fix
+          # live: even this fix's own modest additions pushed the node to
+          # 98% CPU requested (3752m of 3800m allocatable), leaving too
+          # little room for frontend's own 50m to schedule. This specific
+          # single-node, 4-CPU-total cluster genuinely has no slack left -
+          # confirmed live, not theoretical.
           resources:
             requests:
-              cpu: 100m
+              cpu: 75m
               memory: 128Mi
             limits:
               cpu: 500m
