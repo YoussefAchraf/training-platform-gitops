@@ -112,6 +112,28 @@ spec:
           # satisfied by any UID OKD assigns.
           securityContext:
             runAsUser: null
+          # Second, previously-hidden bug uncovered only after fixing the
+          # one above: the chart creates a dedicated argocd-redis-secret-init
+          # ServiceAccount + Role (get/create secrets) + RoleBinding
+          # (redisSecretInit.serviceAccount.create, true by default) for the
+          # secret-init initContainer that runs inside THIS SAME redis pod -
+          # but the pod's own serviceAccountName comes from a completely
+          # separate flag, redis.serviceAccount.create (false by default,
+          # confirmed against templates/redis/_helpers.tpl's
+          # `argo-cd.redis.serviceAccountName` helper), which falls back to
+          # "default" when unset. The dedicated SA/Role/RoleBinding therefore
+          # existed but were never attached to any pod - confirmed live via
+          # `oc get rolebinding argocd-redis-secret-init -o json`, which was
+          # already correctly bound to that SA, while the actual pod ran as
+          # system:serviceaccount:argocd:default and hit "secrets is
+          # forbidden" (Init:Error, CrashLoopBackOff) trying to create
+          # argocd-redis's auth secret. Pointing this pod at the same SA the
+          # RoleBinding already grants access to (rather than enabling
+          # redis.serviceAccount.create with no name, which would create yet
+          # a third, still-permissionless SA) reuses the existing binding.
+          serviceAccount:
+            create: true
+            name: argocd-redis-secret-init
         redisSecretInit:
           resources:
             requests:
