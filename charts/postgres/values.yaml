@@ -43,7 +43,20 @@ persistence:
 postgresDb: training_platform
 postgresUser: postgres
 
-# Name of the Secret (created out-of-band for now, replaced by Vault-derived
-# secrets in a later phase per ARCHITECTURE-PLAN.md §5) holding key
+# Name of the Secret (used when vault.enabled is false) holding key
 # `postgres-password`.
 existingSecret: postgres-credentials
+
+# See "Design decision: Vault gets a values-flag toggle" - same pattern as
+# charts/backend and charts/chatbot. Real finding, same night backend's own
+# Vault-vs-plain-Secret mismatch cost hours of debugging: postgres and
+# backend each had their OWN independently-set password that had to be
+# manually kept identical - the exact bug class this closes. When true,
+# postgres reads its own password from the same Vault path vault-seed.js
+# already writes to (sourced from the same .env value backend itself
+# uses), so there is structurally only one password, not two that must
+# happen to match.
+vault:
+  enabled: false
+  role: postgres-role
+  secretPath: training-platform/data/postgres

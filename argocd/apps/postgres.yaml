@@ -1,7 +1,12 @@
-# No Vault dependency (postgres always uses its own plain bootstrap
-# Secret — no Vault role defined for the datastore itself, only for
-# backend/chatbot which consume it). Default sync-wave (0) is fine; it
-# doesn't need to wait for vault.yaml's wave -1.
+# Now depends on Vault (charts/postgres/values.yaml's vault.enabled: true
+# via environments/local-okd/postgres-values.yaml) - postgres reads its
+# own password from training-platform/data/postgres instead of a
+# separately-set Secret, closing the "two independently-set passwords
+# that must happen to match" bug class a mismatch here cost hours of
+# debugging on an actual OKD deploy. Default sync-wave (0, same as
+# backend/chatbot) is sufficient - ArgoCD already waits for vault.yaml's
+# wave -1 to be Healthy before attempting any wave-0 Application, no
+# explicit annotation needed here too.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
