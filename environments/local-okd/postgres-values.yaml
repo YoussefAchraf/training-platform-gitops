@@ -1,5 +1,14 @@
-# Non-secret overrides for this environment only. Real password lives in
-# the `postgres-credentials` Secret — see postgres-secrets.example.yaml and
-# docs/runbook.md, never here.
+# Non-secret overrides for this environment only.
 persistence:
   storageClassName: ""   # set after `oc get storageclass` on your local OKD install
+
+# Real password now comes from Vault (training-platform/data/postgres,
+# seeded by scripts/vault-seed.js from the same POSTGRES_PASSWORD value
+# backend's own .env already uses) instead of a separately-set Secret -
+# postgres now depends on Vault being Healthy first, same as backend/
+# chatbot (see argocd/apps/postgres.yaml's sync-wave comment).
+# postgres-credentials / postgres-secrets.example.yaml remain only as the
+# vault.enabled: false disaster-recovery fallback, same pattern as
+# backend/chatbot-values.yaml.
+vault:
+  enabled: true
