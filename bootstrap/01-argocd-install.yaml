@@ -26,11 +26,89 @@ spec:
     helm:
       releaseName: argocd
       values: |
+        # Real finding from an actual OKD deploy: every ArgoCD component
+        # shipped with zero resource requests (verified via `oc get
+        # deployment ... -o jsonpath='{.spec.template.spec.containers[0].resources}'`
+        # returning `{}` for all 7 Deployments + the controller
+        # StatefulSet). A pod with no requests gets Kubernetes' lowest
+        # priority class (BestEffort) - under any resource pressure
+        # (disk, CPU), these are evicted before anything else, including
+        # every app pod in this repo's own charts (which all set real
+        # requests). This is why dex-server and repo-server ended up with
+        # ~1000 combined dead pod objects after one night's worth of
+        # disk-pressure episodes that every *other* pod recovered from
+        # far more gracefully. Requests below are deliberately modest -
+        # enough for Burstable QoS protection, not so much that they eat
+        # meaningfully into this single-node cluster's already-tight
+        # scheduling headroom (4 CPU total).
+        controller:
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+        dex:
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+        redis:
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+        redisSecretInit:
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+        repoServer:
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+        applicationSet:
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+        notifications:
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
         server:
           extraArgs:
             - --insecure   # TLS terminates at the OKD Route (edge), not here
           route:
             enabled: false # created explicitly below via the frontend/backend pattern is not needed for argocd itself in this local setup; use `oc expose svc/argocd-server` or add a Route here later if external UI access is wanted
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
         configs:
           params:
             server.insecure: true
