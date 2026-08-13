@@ -22,8 +22,22 @@ spec:
     server: https://kubernetes.default.svc
     namespace: monitoring
   syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
+    # Deliberately NOT automated (no `automated:` block), unlike every
+    # other Application in this repo. Real finding from an actual OKD
+    # deploy: this is a genuinely heavy addition (kube-prometheus-stack -
+    # several CRDs, Deployments, a DaemonSet) on a single-node,
+    # resource-constrained cluster that has repeatedly hit disk/CPU
+    # pressure on its own without monitoring even running. Letting this
+    # auto-deploy the moment root-app creates it - especially right after
+    # a fresh bootstrap, exactly when the node is busiest settling
+    # everything else - risks compounding whatever instability is already
+    # in progress. Sync deliberately by hand (`oc patch application
+    # monitoring -n argocd --type=json -p '[{"op":"add","path":
+    # "/spec/syncPolicy/automated","value":{"prune":true,"selfHeal":true}}]'`
+    # or equivalent) once the rest of the stack is confirmed stable, not
+    # before. A prior live-only patch attempting this same pause was
+    # silently reverted by ArgoCD's own selfHeal on root-app, because it
+    # only changed the live object, never this file - that's why this is
+    # committed here instead.
     syncOptions:
       - CreateNamespace=false
