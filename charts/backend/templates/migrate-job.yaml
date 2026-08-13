@@ -34,6 +34,13 @@ spec:
           {{`{{- with secret "`}}{{ .Values.vault.secretPath }}{{`" -}}`}}
           DATABASE_URL=postgresql://postgres:{{`{{ .Data.data.postgres_password }}`}}@postgres:5432/{{ .Values.postgresDb | default "training_platform" }}
           {{`{{- end -}}`}}
+        # Injector defaults (250m/250Mi request) are sized for long-running
+        # sidecars, not a one-shot secret fetch that runs once and exits -
+        # see the comment on migration.vaultAgentResources in values.yaml.
+        vault.hashicorp.com/agent-init-requests-cpu: {{ .Values.migration.vaultAgentResources.requests.cpu | quote }}
+        vault.hashicorp.com/agent-init-requests-mem: {{ .Values.migration.vaultAgentResources.requests.memory | quote }}
+        vault.hashicorp.com/agent-init-limits-cpu: {{ .Values.migration.vaultAgentResources.limits.cpu | quote }}
+        vault.hashicorp.com/agent-init-limits-mem: {{ .Values.migration.vaultAgentResources.limits.memory | quote }}
       {{- end }}
     spec:
       restartPolicy: Never
@@ -76,4 +83,4 @@ spec:
                   key: DATABASE_URL
           {{- end }}
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
+            {{- toYaml .Values.migration.resources | nindent 12 }}
