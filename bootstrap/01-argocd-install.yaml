@@ -1,11 +1,24 @@
 # Applied by hand, once, AFTER 00-namespace.yaml and AFTER ArgoCD's CRDs +
 # controller are installed into the `argocd` namespace by some other means
-# the very first time (e.g. `oc apply -k
-# https://github.com/argoproj/argo-cd/manifests/cluster-install?ref=stable`,
-# or the upstream Helm chart run once by hand with `helm install`). That
-# first bootstrap is the chicken-and-egg step ARCHITECTURE-PLAN.md §1/§3
-# calls out — ArgoCD cannot deploy itself into a cluster where it doesn't
-# exist yet.
+# the very first time: `oc apply -f bootstrap/argocd-cluster-install.yaml
+# -n argocd --server-side --force-conflicts` (see docs/runbook.md §1).
+# That first bootstrap is the chicken-and-egg step ARCHITECTURE-PLAN.md
+# §1/§3 calls out — ArgoCD cannot deploy itself into a cluster where it
+# doesn't exist yet.
+#
+# Use the vendored, corrected manifest above, not the live upstream URL —
+# confirmed on an actual OKD deploy that the unmodified upstream file
+# hits real bugs this Application can never recover from on its own (a
+# Deployment/StatefulSet's `spec.selector` is immutable, so an
+# incompatible one from an unmodified upstream install can't be patched
+# away once ArgoCD's Helm-based self-sync tries to reconcile it). A
+# one-time `helm install` instead of the raw manifest would sidestep the
+# same bug (it'd create these objects with the same selector convention
+# ArgoCD's self-sync expects from the start) but wasn't used here since
+# it adds a hard dependency on `helm` being installed on whatever machine
+# runs the bootstrap — the vendored manifest needs only `oc`. Full
+# explanation in the comment at the top of
+# bootstrap/argocd-cluster-install.yaml.
 #
 # This Application is what makes ArgoCD subsequently manage its OWN Helm
 # release going forward — from this point on, upgrading ArgoCD's version or
