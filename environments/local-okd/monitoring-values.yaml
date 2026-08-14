@@ -1,5 +1,75 @@
-# No overrides needed yet — charts/monitoring/values.yaml's trimmed
-# single-node defaults already target this environment. Confirm
-# `oc get storageclass` before first apply and set a storageClassName here
-# under kube-prometheus-stack.prometheus.prometheusSpec.storageSpec if the
+# Confirm `oc get storageclass` before first apply and set a
+# storageClassName here under
+# kube-prometheus-stack.prometheus.prometheusSpec.storageSpec if the
 # cluster's default StorageClass isn't already correct.
+#
+# Every component below hardcodes a fixed runAsUser/runAsGroup/fsGroup
+# (65534 "nobody" for node-exporter/kube-state-metrics/prometheusOperator,
+# 472 for grafana, 1000/2000 for prometheus/alertmanager) that OKD's SCCs
+# reject outright - confirmed live, one component at a time, via
+# FailedCreate events naming this exact namespace's assigned range.
+# charts/monitoring/values.yaml originally tried nulling these out (still
+# true for node-exporter, documented there) but null-based deletion of a
+# key that only exists in a SUBCHART's own defaults doesn't reliably
+# propagate through Helm's value coalescing - confirmed by testing both a
+# values override and a direct `--set` against the unwrapped
+# kube-prometheus-stack chart directly, independent of this repo's own
+# wrapper. Concrete (non-null) overrides propagate correctly regardless
+# of nesting depth, same as this chart's own already-working `resources`
+# overrides one file up - so used here instead.
+#
+# This IS genuinely environment-specific, not portable chart config: OKD
+# assigns each namespace its own independent UID range at creation
+# (`oc get namespace monitoring -o jsonpath='{.metadata.annotations.
+# openshift\.io/sa\.scc\.uid-range}'`), which is why this lives here and
+# not in charts/monitoring/values.yaml. If the monitoring namespace is
+# ever deleted and recreated, re-check this value - it may be assigned a
+# different range.
+kube-prometheus-stack:
+  prometheus-node-exporter:
+    securityContext:
+      fsGroup: 1000680000
+      runAsGroup: 1000680000
+      runAsUser: 1000680000
+
+  kube-state-metrics:
+    securityContext:
+      fsGroup: 1000680000
+      runAsGroup: 1000680000
+      runAsUser: 1000680000
+
+  prometheusOperator:
+    securityContext:
+      fsGroup: 1000680000
+      runAsGroup: 1000680000
+      runAsUser: 1000680000
+
+  prometheus:
+    prometheusSpec:
+      securityContext:
+        fsGroup: 1000680000
+        runAsGroup: 1000680000
+        runAsUser: 1000680000
+
+  alertmanager:
+    alertmanagerSpec:
+      securityContext:
+        fsGroup: 1000680000
+        runAsGroup: 1000680000
+        runAsUser: 1000680000
+
+  grafana:
+    securityContext:
+      runAsUser: 1000680000
+      runAsGroup: 1000680000
+      fsGroup: 1000680000
+    # Grafana's default init-chown-data initContainer needs runAsUser: 0
+    # (root) + the CHOWN capability to fix volume ownership at startup -
+    # categorically incompatible with OKD's restricted SCCs regardless of
+    # UID range. Disabling it is the chart's own documented mechanism for
+    # "run as an arbitrary [non-root] user" (see its values.yaml comment);
+    # the fsGroup override above already makes the volume group-writable
+    # at mount time via OKD's own fsGroup handling, which is what this
+    # initContainer would otherwise exist to fix by hand.
+    initChownData:
+      enabled: false
