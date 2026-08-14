@@ -51,3 +51,14 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=false
+      # kube-prometheus-stack's CRDs (Prometheus, Alertmanager, etc.) carry
+      # large OpenAPI schemas that exceed Kubernetes' 262144-byte
+      # last-applied-configuration annotation limit under client-side
+      # apply - the exact same failure class already solved for ArgoCD's
+      # own applicationsets CRD in bootstrap/01-argocd-install.yaml (see
+      # docs/runbook.md §1). Confirmed live: every CRD in this chart hit
+      # "metadata.annotations: Too long: may not be more than 262144
+      # bytes" on every sync attempt until this was added. Server-side
+      # apply computes the diff on the API server instead of storing a
+      # full-config annotation, so it isn't subject to this limit.
+      - ServerSideApply=true
