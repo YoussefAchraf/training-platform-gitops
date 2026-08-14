@@ -148,10 +148,26 @@ vault:
             SECRET_NAME=vault-init-keys
             SCRATCH=/vault-init-scratch/init-output.json
 
+            # Every function/command below that returns JSON pipes through
+            # `tr -d '[:space:]'` before any grep/cut parsing. Real-world
+            # finding, hit live: the grep patterns here assume compact
+            # single-line JSON (`"key":"value"`, no space after the colon)
+            # - true for this script's own test-stub fixtures, but NOT true
+            # of the real `vault status -format=json`/`vault operator init
+            # -format=json` output (pretty-printed, `"key": "value"`) or the
+            # real K8s API's JSON responses (also pretty-printed). Against
+            # real output every value-extraction regex silently matched
+            # nothing (grep -o finding no match isn't an error, so `set -e`
+            # never caught it) and wrote EMPTY strings into the
+            # vault-init-keys Secret after a genuinely successful `vault
+            # operator init` - Vault itself was correctly initialized, only
+            # the Secret meant to record its key was corrupted. Stripping
+            # all whitespace first makes every value-extraction pattern
+            # below correct regardless of the real tool's pretty-printing.
             k8s_get_secret() {
               wget -q -O- --no-check-certificate \
                 --header="Authorization: Bearer $(cat $TOKEN_FILE)" \
-                "$K8S_API/api/v1/namespaces/$NS/secrets/$SECRET_NAME" 2>/dev/null
+                "$K8S_API/api/v1/namespaces/$NS/secrets/$SECRET_NAME" 2>/dev/null | tr -d '[:space:]'
             }
 
             k8s_create_secret() {
@@ -160,7 +176,7 @@ vault:
                 --header="Authorization: Bearer $(cat $TOKEN_FILE)" \
                 --header="Content-Type: application/json" \
                 --post-data="$BODY" \
-                "$K8S_API/api/v1/namespaces/$NS/secrets"
+                "$K8S_API/api/v1/namespaces/$NS/secrets" | tr -d '[:space:]'
             }
 
             echo "[vault-bootstrap] waiting for vault server to respond..."
@@ -175,7 +191,7 @@ vault:
             # the state parsing below regardless of vault's own exit code.
             STATUS_JSON=""
             until [ -n "$STATUS_JSON" ]; do
-              STATUS_JSON=$(vault status -format=json 2>/dev/null) || true
+              STATUS_JSON=$(vault status -format=json 2>/dev/null | tr -d '[:space:]') || true
               [ -z "$STATUS_JSON" ] && sleep 2
             done
 
@@ -210,6 +226,7 @@ vault:
               else
                 echo "[vault-bootstrap] running vault operator init..."
                 INIT_JSON=$(vault operator init -key-shares=1 -key-threshold=1 -format=json)
+                INIT_JSON=$(echo "$INIT_JSON" | tr -d '[:space:]')
                 echo "$INIT_JSON" > "$SCRATCH"
               fi
 
@@ -225,7 +242,7 @@ vault:
               rm -f "$SCRATCH"
               echo "[vault-bootstrap] init complete."
 
-              STATUS_JSON=$(vault status -format=json 2>/dev/null || true)
+              STATUS_JSON=$(vault status -format=json 2>/dev/null | tr -d '[:space:]' || true)
               SEALED=$(echo "$STATUS_JSON" | grep -o '"sealed":[a-z]*' | cut -d: -f2)
             fi
 
