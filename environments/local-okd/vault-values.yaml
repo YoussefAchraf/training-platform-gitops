@@ -1,5 +1,7 @@
-# No overrides needed yet — charts/vault/values.yaml's dev-mode defaults
-# are already scoped for a local install. Kept as an empty-but-present file
-# so the ArgoCD Application's valueFiles reference doesn't 404, and so
-# future environment-specific overrides (e.g. a real Route for the Vault
-# UI) have an obvious home.
+# Empty storage class = cluster default, same pattern as
+# postgres-values.yaml's persistence.storageClassName. Confirm with
+# `oc get storageclass` if this cluster's default ever changes.
+vault:
+  server:
+    dataStorage:
+      storageClass: ""
