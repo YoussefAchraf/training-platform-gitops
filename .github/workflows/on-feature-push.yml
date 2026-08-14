@@ -19,6 +19,16 @@ jobs:
       pull-requests: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      BRANCH: ${{ github.ref_name }}
+      # Passed via env, not interpolated straight into the run: block -
+      # `${{ }}` expressions are substituted as raw text into the
+      # generated shell script BEFORE bash ever parses it, so a commit
+      # message containing a double quote or backtick (both completely
+      # ordinary in prose) breaks the script - confirmed live, this job
+      # failed with a bash syntax error the first time a real commit
+      # message quoted a literal error string. Referencing $COMMIT_MSG
+      # instead lets the shell handle it as one safely-quoted value.
+      COMMIT_MSG: ${{ github.event.head_commit.message }}
     steps:
       # backend/frontend's own on-feature-push.yml also auto-merges once
       # dev's checks pass, using a DEV_AUTOMERGE_TOKEN secret (a PAT — the
@@ -29,10 +39,9 @@ jobs:
       # backend's on-feature-push.yml later if full parity is wanted.
       - name: Open (or reuse) a PR into dev
         run: |
-          BRANCH="${{ github.ref_name }}"
           EXISTING=$(gh pr list --repo "${{ github.repository }}" --head "$BRANCH" --base dev --json number --jq 'length')
           if [ "$EXISTING" = "0" ]; then
-            TITLE=$(echo "${{ github.event.head_commit.message }}" | head -n1)
+            TITLE=$(printf '%s' "$COMMIT_MSG" | head -n1)
             gh pr create --repo "${{ github.repository }}" --base dev --head "$BRANCH" \
               --title "$TITLE" \
               --body "Auto-opened after verify passed on \`$BRANCH\`. Review and merge manually."
