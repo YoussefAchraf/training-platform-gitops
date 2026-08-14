@@ -3,6 +3,24 @@
 # ARCHITECTURE-PLAN.md §6 — upstream defaults are tuned for real clusters
 # and will over-request on a modest local VM/CRC instance.
 kube-prometheus-stack:
+  # Real finding from an actual OKD deploy: prometheusOperator's admission-
+  # webhook cert-patch Job hardcodes runAsUser/runAsGroup: 2000 - same bug
+  # class as argocd-redis/backend elsewhere in this repo. Confirmed live
+  # (FailedCreate, "must be in the ranges: [1000680000, 1000689999]") after
+  # this Job sat silently stuck for 27 minutes with zero pods ever created,
+  # blocking the whole Application's sync. Unlike node-exporter's
+  # subchart-of-a-subchart securityContext (values.yaml's own comment on
+  # prometheus-node-exporter below - nulling doesn't propagate through
+  # that nesting), this Job's securityContext is a direct
+  # prometheusOperator.admissionWebhooks.patch key - same nesting depth as
+  # prometheus.prometheusSpec.resources above, which already overrides
+  # cleanly - so nulling it here is expected to actually take effect.
+  prometheusOperator:
+    admissionWebhooks:
+      patch:
+        securityContext:
+          runAsGroup: null
+          runAsUser: null
   prometheus:
     prometheusSpec:
       replicas: 1
