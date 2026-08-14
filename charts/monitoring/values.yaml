@@ -67,10 +67,25 @@ kube-prometheus-stack:
         labelValue: "1"
 
   # node-exporter runs as a DaemonSet needing host PID/network access —
-  # under OKD's default restricted-v2 SCC this will fail to schedule. It
-  # needs the `hostaccess` (or `hostnetwork`) SCC granted to its
-  # ServiceAccount. Flagged here explicitly rather than silently failing;
-  # see docs/runbook.md for the `oc adm policy add-scc-to-user` command.
+  # under OKD's default restricted-v2 SCC this will fail to schedule. The
+  # SCC grant itself is git-tracked (charts/monitoring/templates/
+  # node-exporter-scc-rolebinding.yaml), not a manual `oc adm policy`
+  # step, so this Application can auto-sync like every other one in this
+  # repo.
+  #
+  # The subchart's own default pod securityContext ALSO hardcodes
+  # fsGroup/runAsGroup/runAsUser to 65534 (the "nobody" UID) - same bug
+  # class already found and fixed for argocd-redis and backend elsewhere
+  # in this repo. Tried nulling those out here the same way, but verified
+  # locally (`helm template`, both via a values override and a direct
+  # `--set`) that it does NOT take effect through this chart's specific
+  # subchart structure - the default 65534 always survives the merge,
+  # for reasons not yet root-caused. Deliberately NOT shipping an
+  # unverified fix for a problem not yet confirmed to exist either: the
+  # `hostaccess` SCC this pod now gets (unlike restricted-v2) may permit
+  # a fixed UID outright. Left as-is; if the live sync shows a real SCC
+  # rejection, fix it then with the actual error in hand rather than
+  # guess further.
   prometheus-node-exporter:
     resources:
       requests:
