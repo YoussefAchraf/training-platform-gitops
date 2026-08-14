@@ -22,10 +22,21 @@ jobs:
         with:
           version: v3.16.4
 
-      - name: helm dependency update (vault, monitoring wrapper charts)
+      - name: helm dependency update (every wrapper chart)
+        # Loops rather than hardcoding chart names one at a time - a
+        # missed name here is exactly what broke this job the last time
+        # a new wrapper chart (kube-green) was added: `helm template`/
+        # `helm lint` fail with "found in Chart.yaml, but missing in
+        # charts/ directory" on a fresh CI checkout, since the
+        # dependency archive itself is gitignored, not vendored (see
+        # charts/vault/Chart.yaml's own comment on why).
         run: |
-          helm dependency update charts/vault
-          helm dependency update charts/monitoring
+          set -e
+          for c in charts/*/; do
+            if [ -f "$c/Chart.yaml" ] && grep -q '^dependencies:' "$c/Chart.yaml"; then
+              helm dependency update "$c"
+            fi
+          done
 
       - name: helm lint (every chart)
         run: |
@@ -86,10 +97,21 @@ jobs:
         with:
           version: v3.16.4
 
-      - name: helm dependency update (vault, monitoring wrapper charts)
+      - name: helm dependency update (every wrapper chart)
+        # Loops rather than hardcoding chart names one at a time - a
+        # missed name here is exactly what broke this job the last time
+        # a new wrapper chart (kube-green) was added: `helm template`/
+        # `helm lint` fail with "found in Chart.yaml, but missing in
+        # charts/ directory" on a fresh CI checkout, since the
+        # dependency archive itself is gitignored, not vendored (see
+        # charts/vault/Chart.yaml's own comment on why).
         run: |
-          helm dependency update charts/vault
-          helm dependency update charts/monitoring
+          set -e
+          for c in charts/*/; do
+            if [ -f "$c/Chart.yaml" ] && grep -q '^dependencies:' "$c/Chart.yaml"; then
+              helm dependency update "$c"
+            fi
+          done
 
       - name: Render every chart to a single manifest set
         run: |
