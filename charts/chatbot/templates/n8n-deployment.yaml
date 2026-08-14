@@ -23,12 +23,20 @@ spec:
         vault.hashicorp.com/agent-set-security-context: "false"
         vault.hashicorp.com/role: {{ .Values.vault.role | quote }}
         vault.hashicorp.com/agent-inject-secret-env: {{ .Values.vault.secretPath | quote }}
+        # Values are single-quoted deliberately - see the matching comment
+        # in charts/backend/templates/deployment.yaml. Real live finding
+        # there: an unquoted value containing a space silently breaks
+        # whatever entrypoint sources this file (POSIX `VAR=val cmd` prefix-
+        # assignment semantics discard the assignment after running the
+        # rest of the line as a command). None of these four values
+        # currently contain a space, but quoting costs nothing and removes
+        # the failure mode entirely the next time any of them is rotated.
         vault.hashicorp.com/agent-inject-template-env: |
           {{`{{- with secret "`}}{{ .Values.vault.secretPath }}{{`" -}}`}}
-          N8N_ENCRYPTION_KEY={{`{{ .Data.data.n8n_encryption_key }}`}}
-          N8N_OWNER_PASSWORD={{`{{ .Data.data.n8n_owner_password }}`}}
-          AI_API_KEY={{`{{ .Data.data.n8n_ai_api_key }}`}}
-          REDIS_PASSWORD={{`{{ .Data.data.redis_password }}`}}
+          N8N_ENCRYPTION_KEY='{{`{{ .Data.data.n8n_encryption_key }}`}}'
+          N8N_OWNER_PASSWORD='{{`{{ .Data.data.n8n_owner_password }}`}}'
+          AI_API_KEY='{{`{{ .Data.data.n8n_ai_api_key }}`}}'
+          REDIS_PASSWORD='{{`{{ .Data.data.redis_password }}`}}'
           {{`{{- end -}}`}}
       {{- end }}
     spec:
