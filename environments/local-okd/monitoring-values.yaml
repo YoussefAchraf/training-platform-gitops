@@ -3,6 +3,13 @@
 # kube-prometheus-stack.prometheus.prometheusSpec.storageSpec if the
 # cluster's default StorageClass isn't already correct.
 #
+# Same apps-crc.testing subdomain convention as the other three routes
+# (frontend/backend/n8n) - see docs/runbook.md for the matching
+# /etc/hosts entries this needs on the host machine.
+route:
+  host: "grafana-training-platform.apps-crc.testing"
+  prometheusHost: "prometheus-training-platform.apps-crc.testing"
+#
 # Every component below hardcodes a fixed runAsUser/runAsGroup/fsGroup
 # (65534 "nobody" for node-exporter/kube-state-metrics/prometheusOperator,
 # 472 for grafana, 1000/2000 for prometheus/alertmanager) that OKD's SCCs
