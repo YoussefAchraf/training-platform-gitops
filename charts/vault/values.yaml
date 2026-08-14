@@ -1,17 +1,29 @@
 # Values passed straight through to the upstream hashicorp/vault chart
 # (nested under `vault:` because that's the dependency's alias/name).
-# Dev-mode, single pod — a deliberate choice for this local-OKD
-# learning/demo environment, not an oversight. See ARCHITECTURE-PLAN.md §5
-# "Dev-mode Vault caveat, stated plainly" before ever pointing this at
-# anything beyond a local cluster.
+#
+# Persistent storage + self-managed auto-unseal, not dev-mode. Real
+# finding from an actual OKD deploy, hit repeatedly in one session:
+# dev-mode's in-memory storage wipes EVERYTHING (auth config, policies,
+# roles, KV secret data) on every pod restart, for any reason - a plain
+# `crc stop`/`crc start` included, not just something exotic. That's
+# incompatible with "GitOps that self-heals with zero manual steps," so
+# this now uses file storage on a PVC (`dataStorage`) plus a self-managed
+# init/unseal sidecar (below) instead of dev-mode's built-in convenience.
+#
+# File storage, not raft integrated storage: raft's entire value is
+# leader election/log replication across >=3 nodes. At replicas: 1 (the
+# only sane number on this single-node cluster) there's no election to
+# hold and no peer to replicate to - it would just be extra bookkeeping
+# machinery protecting against a failover scenario that can't happen
+# here. File storage is a flat directory on the PVC, trivially
+# debuggable (`ls /vault/data`), with no Consul-migration or
+# snapshot/restore need this repo actually has.
 vault:
   server:
     dev:
+      enabled: false
+    standalone:
       enabled: true
-      # Root token defaults to the upstream chart's own well-known dev
-      # value ("root") — intentionally not overridden here. Dev mode is
-      # already in-memory/auto-unsealed/single-pod; a "hidden" root token
-      # would be theater, not security, at this scope.
     resources:
       requests:
         cpu: 100m
@@ -19,15 +31,16 @@ vault:
       limits:
         cpu: 500m
         memory: 512Mi
-    # Dev mode's storage is in-memory — no PVC, data does not survive a pod
-    # restart. Acceptable for this environment per the caveat above; if this
-    # ever needs real persistence, dev.enabled must go false and dataStorage
-    # + ha.raft need to be configured for real, which roughly triples this
-    # chart's complexity (also per §5).
     dataStorage:
-      enabled: false
+      enabled: true
+      size: 1Gi   # a handful of KV-v2 secrets + policies/roles, nowhere near upstream's 10Gi default
     ha:
       enabled: false
+    # Pinned explicitly (== what the chart's own fullname template would
+    # derive anyway at this release name) so the new RBAC template below
+    # can reference it directly without a fragile cross-chart helper call.
+    serviceAccount:
+      name: vault
     # Real finding from an actual OKD deploy, not theoretical: the upstream
     # chart's own defaults (runAsUser: 100, fsGroup: 1000) are hardcoded
     # values OKD's restricted-v2 SCC rejects outright (runAsUser must fall
@@ -49,50 +62,168 @@ vault:
         container:
           allowPrivilegeEscalation: false
 
-    # Real finding, hit 3 times in one session: Vault dev mode's storage is
-    # in-memory (see dataStorage.enabled: false above) - every restart of
-    # this pod, for ANY reason (helm upgrade, node reboot, a disk-pressure
-    # eviction), wipes the kubernetes auth method, both roles, both
-    # policies, and the KV mount itself. Previously this needed 10+ manual
-    # `vault write`/`vault policy write` commands typed by hand, every
-    # single time. A Helm hook Job would NOT actually fix this - hooks only
-    # fire on an explicit `helm install`/`upgrade`, not on a spontaneous
-    # pod restart with no Helm command involved (exactly what caused all 3
-    # real occurrences). An init container doesn't work either - it runs
-    # BEFORE the main vault-server container starts, so it can't call an
-    # API that isn't listening yet. A sidecar (extraContainers, sharing the
-    # pod's network namespace) is the one thing that actually runs every
-    # time this pod starts for any reason, once vault-server is already up.
+    # Real finding, hit repeatedly in one session: with persistent storage
+    # now in place, the ONE thing dev-mode used to give for free is
+    # automatic unseal. A real Vault comes back SEALED after every
+    # restart (its data is encrypted at rest) - with no external KMS
+    # available on this local single-node cluster (no AWS/GCP/Azure KMS,
+    # no second Vault to act as a transit auto-unseal backend), the only
+    # way to keep this fully automatic (matching every other
+    # self-healing thing in this repo) is a self-managed init/unseal
+    # step, done here rather than by hand.
     #
-    # Deliberately does NOT reseed actual secret values (JWT_SECRET,
+    # Extends the SAME container that used to be `vault-auth-bootstrap`
+    # (renamed vault-bootstrap - it now does more than auth setup)
+    # instead of adding a second sidecar: `extraContainers` entries start
+    # concurrently with no ordering guarantee between them, so splitting
+    # init/unseal and auth-bootstrap into two containers would only add
+    # indirection (correctness would depend on one container's wait-loop
+    # happening to outlast the other), not real isolation - both need
+    # the same K8s API access either way. Sequential-in-one-script is
+    # what already made the original auth-bootstrap logic correct; this
+    # keeps that reasoning intact. An init container still doesn't work
+    # for any of this - it runs BEFORE vault-server starts, so it can't
+    # call an API that isn't listening yet.
+    #
+    # State machine, run on every container start:
+    #   1. Wait for vault-server to respond at all (connection refused
+    #      = not up yet; any actual response, sealed or not, means proceed).
+    #   2. Not yet initialized -> `vault operator init` (1-of-1 Shamir -
+    #      no multi-operator quorum need at this scope, and the root
+    #      token stored right next to it is equally powerful either way,
+    #      so a higher threshold wouldn't raise the real security bar
+    #      here), write the result to a `vault-init-keys` Secret via a
+    #      direct Kubernetes API call (bearer token from this pod's own
+    #      ServiceAccount - same credential the auth-bootstrap step below
+    #      already uses for token_reviewer_jwt). The init output is
+    #      written to a scratch file on the SAME persistent volume
+    #      first, before the Secret-write API call, so a pod killed
+    #      between "init succeeded" and "Secret written" can retry the
+    #      write from that file on next boot instead of the unseal key
+    #      being gone forever - Shamir key loss on an already-initialized
+    #      Vault has no recovery path, by design, so this window is
+    #      deliberately minimized rather than left to chance.
+    #   3. Sealed (every subsequent boot) -> read the key back from that
+    #      same Secret, `vault operator unseal`.
+    #   4. Ready -> fetch the real root token from that Secret (never a
+    #      hardcoded "root" - that only ever existed as dev-mode's
+    #      well-known default) and fall through to the existing,
+    #      unchanged idempotent auth/policy/role bootstrap.
+    #
+    # BusyBox wget in this image has no --ca-certificate flag (confirmed
+    # live against the actual hashicorp/vault:1.17.2 image before writing
+    # this - `wget --help` doesn't list it), so Kubernetes API calls here
+    # use --no-check-certificate. Acceptable at this trust boundary: the
+    # call stays inside the cluster's own internal network either way,
+    # and the real authorization is the bearer token + RBAC (see
+    # init-secret-rbac.yaml), not which CA signed the API server's cert.
+    #
+    # Deliberately still does NOT reseed actual secret values (JWT_SECRET,
     # passwords, the AI proxy key) - those come from this machine's local
     # .env files via scripts/vault-seed.js, which has no access to files
-    # outside the cluster. Still needs a manual `node scripts/vault-seed.js`
-    # run once after any restart. This sidecar only rebuilds the
-    # *structure* Vault needs to accept and deliver those values: the
-    # kubernetes auth method, the KV-v2 mount, both roles, both policies.
+    # outside the cluster. That remains a deliberate manual step when
+    # secret VALUES change; this script only ever rebuilds structure
+    # (auth method, KV mount, policies, roles) and now also the
+    # init/unseal state, both of which persist correctly going forward.
     extraContainers:
-      - name: vault-auth-bootstrap
+      - name: vault-bootstrap
         image: "hashicorp/vault:1.17.2"
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
             drop: ["ALL"]
+        volumeMounts:
+          - name: data
+            mountPath: /vault-init-scratch
+            subPath: vault-init-scratch
         command: ["/bin/sh", "-c"]
         args:
           - |
             set -e
             export VAULT_ADDR=http://127.0.0.1:8200
 
-            echo "[vault-auth-bootstrap] waiting for vault to be up and unsealed..."
-            until vault status >/dev/null 2>&1; do sleep 2; done
+            K8S_API="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
+            NS="$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)"
+            TOKEN_FILE=/var/run/secrets/kubernetes.io/serviceaccount/token
+            SECRET_NAME=vault-init-keys
+            SCRATCH=/vault-init-scratch/init-output.json
 
-            export VAULT_TOKEN=root
+            k8s_get_secret() {
+              wget -q -O- --no-check-certificate \
+                --header="Authorization: Bearer $(cat $TOKEN_FILE)" \
+                "$K8S_API/api/v1/namespaces/$NS/secrets/$SECRET_NAME" 2>/dev/null
+            }
+
+            k8s_create_secret() {
+              BODY=$(printf '{"apiVersion":"v1","kind":"Secret","type":"Opaque","metadata":{"name":"%s"},"stringData":{"unseal_key_b64":"%s","root_token":"%s"}}' "$SECRET_NAME" "$1" "$2")
+              wget -q -O- --no-check-certificate \
+                --header="Authorization: Bearer $(cat $TOKEN_FILE)" \
+                --header="Content-Type: application/json" \
+                --post-data="$BODY" \
+                "$K8S_API/api/v1/namespaces/$NS/secrets"
+            }
+
+            echo "[vault-bootstrap] waiting for vault server to respond..."
+            until STATUS_JSON=$(vault status -format=json 2>/dev/null); do
+              sleep 2
+            done
+
+            INITIALIZED=$(echo "$STATUS_JSON" | grep -o '"initialized":[a-z]*' | cut -d: -f2)
+            SEALED=$(echo "$STATUS_JSON" | grep -o '"sealed":[a-z]*' | cut -d: -f2)
+
+            if [ "$INITIALIZED" != "true" ]; then
+              echo "[vault-bootstrap] vault not initialized yet."
+
+              EXISTING=$(k8s_get_secret)
+              if echo "$EXISTING" | grep -q '"root_token"'; then
+                while true; do
+                  echo "[vault-bootstrap] CRITICAL: vault-init-keys Secret already exists but vault reports uninitialized - inconsistent state (PVC wiped independently of the Secret?). Not touching anything automatically; manual investigation required."
+                  sleep 300
+                done
+              fi
+
+              if [ -f "$SCRATCH" ]; then
+                echo "[vault-bootstrap] found scratch init-output from an incomplete previous run, retrying the Secret write from it..."
+                INIT_JSON=$(cat "$SCRATCH")
+              else
+                echo "[vault-bootstrap] running vault operator init..."
+                INIT_JSON=$(vault operator init -key-shares=1 -key-threshold=1 -format=json)
+                echo "$INIT_JSON" > "$SCRATCH"
+              fi
+
+              UNSEAL_KEY=$(echo "$INIT_JSON" | grep -o '"unseal_keys_b64":\["[^"]*"' | sed 's/.*\["//; s/"$//')
+              ROOT_TOKEN=$(echo "$INIT_JSON" | grep -o '"root_token":"[^"]*"' | cut -d'"' -f4)
+
+              echo "[vault-bootstrap] writing vault-init-keys Secret..."
+              k8s_create_secret "$UNSEAL_KEY" "$ROOT_TOKEN" >/dev/null
+              rm -f "$SCRATCH"
+              echo "[vault-bootstrap] init complete."
+
+              STATUS_JSON=$(vault status -format=json 2>/dev/null || true)
+              SEALED=$(echo "$STATUS_JSON" | grep -o '"sealed":[a-z]*' | cut -d: -f2)
+            fi
+
+            if [ "$SEALED" = "true" ]; then
+              echo "[vault-bootstrap] vault is sealed, unsealing..."
+              SECRET_JSON=$(k8s_get_secret)
+              if ! echo "$SECRET_JSON" | grep -q '"unseal_key_b64"'; then
+                while true; do
+                  echo "[vault-bootstrap] CRITICAL: vault is initialized and sealed but no vault-init-keys Secret exists - unseal key not recoverable automatically. Manual intervention required."
+                  sleep 300
+                done
+              fi
+              UNSEAL_KEY=$(echo "$SECRET_JSON" | grep -o '"unseal_key_b64":"[^"]*"' | cut -d'"' -f4 | base64 -d)
+              vault operator unseal "$UNSEAL_KEY" >/dev/null
+              echo "[vault-bootstrap] unsealed."
+            fi
+
+            SECRET_JSON=$(k8s_get_secret)
+            export VAULT_TOKEN=$(echo "$SECRET_JSON" | grep -o '"root_token":"[^"]*"' | cut -d'"' -f4 | base64 -d)
 
             if vault auth list -format=json 2>/dev/null | grep -q '"kubernetes/"'; then
-              echo "[vault-auth-bootstrap] kubernetes auth already configured, nothing to do."
+              echo "[vault-bootstrap] kubernetes auth already configured, nothing to do."
             else
-              echo "[vault-auth-bootstrap] configuring kubernetes auth, KV mount, policies, roles..."
+              echo "[vault-bootstrap] configuring kubernetes auth, KV mount, policies, roles..."
 
               vault auth enable kubernetes
 
@@ -133,8 +264,8 @@ vault:
                 policies=postgres-policy \
                 ttl=3600
 
-              echo "[vault-auth-bootstrap] done."
-              echo "[vault-auth-bootstrap] REMINDER: run 'node scripts/vault-seed.js' now to seed real secret values - this sidecar only rebuilds structure, never secret data."
+              echo "[vault-bootstrap] done."
+              echo "[vault-bootstrap] REMINDER: run 'node scripts/vault-seed.js' now to seed real secret values - this sidecar only rebuilds structure, never secret data. Get VAULT_TOKEN from: oc get secret vault-init-keys -n vault -o jsonpath='{.data.root_token}' | base64 -d"
             fi
 
             sleep infinity
@@ -161,4 +292,4 @@ vault:
 
   ui:
     enabled: true
-    serviceType: ClusterIP   # reach via `oc port-forward` for admin use — no external Route for a dev-mode instance holding a well-known root token
+    serviceType: ClusterIP   # reach via `oc port-forward` for admin use — the root token is now randomly generated at init and only ever lives in the vault-init-keys Secret, but there's still no real need for an external Route on a single-operator local cluster
