@@ -182,10 +182,21 @@ vault:
             INITIALIZED=$(echo "$STATUS_JSON" | grep -o '"initialized":[a-z]*' | cut -d: -f2)
             SEALED=$(echo "$STATUS_JSON" | grep -o '"sealed":[a-z]*' | cut -d: -f2)
 
+            # set -e is active for the whole script (deliberately - real
+            # failures should stop and crash-loop rather than plow on with
+            # partial state), but that means every call below that can
+            # LEGITIMATELY return non-zero as part of NORMAL control flow
+            # (a 404 from the K8s API because the Secret doesn't exist yet
+            # is expected on the very first-ever boot, not an error) needs
+            # `|| true` so set -e doesn't kill the script before the
+            # explicit content-based checks below ever run. Confirmed live
+            # the hard way: without this, the container crash-looped
+            # forever on the first-ever-boot 404, never reaching the code
+            # that's supposed to handle exactly that case.
             if [ "$INITIALIZED" != "true" ]; then
               echo "[vault-bootstrap] vault not initialized yet."
 
-              EXISTING=$(k8s_get_secret)
+              EXISTING=$(k8s_get_secret) || true
               if echo "$EXISTING" | grep -q '"root_token"'; then
                 while true; do
                   echo "[vault-bootstrap] CRITICAL: vault-init-keys Secret already exists but vault reports uninitialized - inconsistent state (PVC wiped independently of the Secret?). Not touching anything automatically; manual investigation required."
@@ -206,7 +217,11 @@ vault:
               ROOT_TOKEN=$(echo "$INIT_JSON" | grep -o '"root_token":"[^"]*"' | cut -d'"' -f4)
 
               echo "[vault-bootstrap] writing vault-init-keys Secret..."
-              k8s_create_secret "$UNSEAL_KEY" "$ROOT_TOKEN" >/dev/null
+              CREATE_RESULT=$(k8s_create_secret "$UNSEAL_KEY" "$ROOT_TOKEN") || true
+              if ! echo "$CREATE_RESULT" | grep -q '"name":"vault-init-keys"'; then
+                echo "[vault-bootstrap] CRITICAL: failed to write vault-init-keys Secret after operator init - init output is still on disk at $SCRATCH, will retry the write on next restart. Response: $CREATE_RESULT"
+                exit 1
+              fi
               rm -f "$SCRATCH"
               echo "[vault-bootstrap] init complete."
 
@@ -216,7 +231,7 @@ vault:
 
             if [ "$SEALED" = "true" ]; then
               echo "[vault-bootstrap] vault is sealed, unsealing..."
-              SECRET_JSON=$(k8s_get_secret)
+              SECRET_JSON=$(k8s_get_secret) || true
               if ! echo "$SECRET_JSON" | grep -q '"unseal_key_b64"'; then
                 while true; do
                   echo "[vault-bootstrap] CRITICAL: vault is initialized and sealed but no vault-init-keys Secret exists - unseal key not recoverable automatically. Manual intervention required."
@@ -228,8 +243,13 @@ vault:
               echo "[vault-bootstrap] unsealed."
             fi
 
-            SECRET_JSON=$(k8s_get_secret)
-            export VAULT_TOKEN=$(echo "$SECRET_JSON" | grep -o '"root_token":"[^"]*"' | cut -d'"' -f4 | base64 -d)
+            SECRET_JSON=$(k8s_get_secret) || true
+            ROOT_TOKEN_B64=$(echo "$SECRET_JSON" | grep -o '"root_token":"[^"]*"' | cut -d'"' -f4)
+            if [ -z "$ROOT_TOKEN_B64" ]; then
+              echo "[vault-bootstrap] CRITICAL: could not read root_token from vault-init-keys Secret - cannot proceed with auth bootstrap."
+              exit 1
+            fi
+            export VAULT_TOKEN=$(echo "$ROOT_TOKEN_B64" | base64 -d)
 
             if vault auth list -format=json 2>/dev/null | grep -q '"kubernetes/"'; then
               echo "[vault-bootstrap] kubernetes auth already configured, nothing to do."
