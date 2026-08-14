@@ -164,8 +164,19 @@ vault:
             }
 
             echo "[vault-bootstrap] waiting for vault server to respond..."
-            until STATUS_JSON=$(vault status -format=json 2>/dev/null); do
-              sleep 2
+            # Deliberately NOT `until STATUS_JSON=$(vault status ...)` - vault
+            # status returns a non-zero exit code for BOTH "server not
+            # reachable yet" AND "reachable but sealed/uninitialized" (exit 2
+            # for both, confirmed live), so looping on exit status alone would
+            # never escape once vault-server is actually up but sealed - which
+            # is the normal, expected state on every boot after the first.
+            # Loop on stdout content instead: empty output means no response
+            # at all (connection refused), any real output means proceed to
+            # the state parsing below regardless of vault's own exit code.
+            STATUS_JSON=""
+            until [ -n "$STATUS_JSON" ]; do
+              STATUS_JSON=$(vault status -format=json 2>/dev/null) || true
+              [ -z "$STATUS_JSON" ] && sleep 2
             done
 
             INITIALIZED=$(echo "$STATUS_JSON" | grep -o '"initialized":[a-z]*' | cut -d: -f2)
