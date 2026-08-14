@@ -28,3 +28,11 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=false
+  # Same kube-green-vs-selfHeal conflict as argocd/apps/backend.yaml -
+  # see that file's comment for the full explanation and the live
+  # evidence that motivated this.
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas
