@@ -1,3 +1,14 @@
+# Routes for external access - same pattern as charts/frontend and
+# charts/backend (route.host / route.tlsTermination), but two hosts since
+# Grafana and Prometheus are separate Services. Empty by default so a
+# fresh environment doesn't accidentally expose these before its own
+# *-values.yaml sets real hostnames; see
+# environments/local-okd/monitoring-values.yaml.
+route:
+  host: ""
+  prometheusHost: ""
+  tlsTermination: edge
+
 # Values passed straight through to kube-prometheus-stack (nested under
 # `kube-prometheus-stack:`). Trimmed for a single-node local OKD install per
 # ARCHITECTURE-PLAN.md §6 — upstream defaults are tuned for real clusters

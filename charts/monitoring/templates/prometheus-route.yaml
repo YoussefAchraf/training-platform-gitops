@@ -1,0 +1,19 @@
+{{- if .Values.route.prometheusHost }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: prometheus
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: training-platform
+spec:
+  host: {{ .Values.route.prometheusHost }}
+  to:
+    kind: Service
+    name: {{ .Release.Name }}-kube-prometheus-prometheus
+  port:
+    targetPort: http-web
+  tls:
+    termination: {{ .Values.route.tlsTermination }}
+    insecureEdgeTerminationPolicy: Redirect
+{{- end }}
