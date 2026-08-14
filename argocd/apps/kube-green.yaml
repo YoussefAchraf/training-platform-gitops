@@ -1,0 +1,42 @@
+# Sleeps training-platform overnight/weekends to free up CPU on this
+# resource-tight local cluster - vault/argocd/monitoring are never
+# targeted (a SleepInfo only ever affects the namespace it lives in, and
+# charts/kube-green/templates/sleepinfo.yaml only ever creates one, in
+# training-platform - see that file).
+#
+# No sync-wave dependency on the rest of the app stack: the controller
+# and training-platform's workloads are independent of each other, this
+# just needs to exist eventually. CreateNamespace=true (unlike the other
+# Applications here) since kube-green is a new namespace not already
+# covered by bootstrap/00-namespace.yaml's one-time manual apply - this
+# keeps the whole thing zero-manual-steps rather than adding one more
+# line to a file that's already been applied once on this cluster.
+#
+# The SleepInfo CR (this chart's own template, applied in the same sync
+# as the controller/webhook) can race the webhook's cert Jobs on a
+# first-ever install - the admission webhook (failurePolicy: Fail)
+# rejects any SleepInfo create attempted before it's actually serving.
+# Not worked around explicitly: selfHeal below means ArgoCD's normal
+# reconcile loop retries automatically until it succeeds, same as every
+# other Application in this repo relies on rather than an explicit
+# syncPolicy.retry block.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-green
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/YoussefAchraf/training-platform-gitops.git
+    targetRevision: main
+    path: charts/kube-green
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-green
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

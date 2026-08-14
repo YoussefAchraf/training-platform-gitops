@@ -1,0 +1,19 @@
+# Sleeps the training-platform namespace only, overnight and weekends -
+# vault/argocd/monitoring are never targeted (a SleepInfo only ever
+# affects its own namespace, so this is enforced simply by which
+# namespace this Application deploys into, see argocd/apps/kube-green.yaml).
+#
+# suspendStatefulSets defaults to true upstream (postgres-0/backend-redis-0/
+# chatbot-redis-0 are StatefulSets and need this to actually sleep), kept
+# explicit here so the intent survives a future upstream default change.
+apiVersion: kube-green.com/v1alpha1
+kind: SleepInfo
+metadata:
+  name: training-platform-overnight
+  namespace: training-platform
+spec:
+  weekdays: "1-5"
+  sleepAt: "20:00"
+  wakeUpAt: "08:00"
+  timeZone: "Europe/Paris"
+  suspendStatefulSets: true
