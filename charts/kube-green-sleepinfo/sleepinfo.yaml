@@ -1,0 +1,35 @@
+# Plain manifest, not a Helm chart - deliberately its own ArgoCD
+# Application (argocd/apps/kube-green-sleepinfo.yaml), not a template
+# inside charts/kube-green. Real finding from an actual OKD deploy: a
+# SleepInfo CR applied in the SAME sync as the kube-green controller
+# deadlocks permanently. The controller's admission webhook has no
+# trusted CA until its `webhook-certpatch` Job runs - but that Job is a
+# Helm post-install/post-upgrade hook, which ArgoCD only runs once every
+# NON-hook resource in that same sync has successfully applied. A
+# SleepInfo CR in that same sync can never succeed (the webhook rejects
+# it with "certificate signed by unknown authority" until certpatch
+# runs), so the hook that would fix that never fires either - selfHeal
+# retries the exact same deadlock forever. Splitting this into its own
+# Application (sync-wave "1", see argocd/apps/kube-green-sleepinfo.yaml)
+# means it only gets attempted once the kube-green Application's own
+# sync (default wave 0, including its post-sync hook) has already
+# completed - by then the webhook has a real CA and this applies
+# cleanly.
+#
+# Sleeps training-platform only, overnight and weekends - vault/argocd/
+# monitoring are never targeted (a SleepInfo only ever affects its own
+# namespace). suspendStatefulSets defaults to true upstream
+# (postgres-0/backend-redis-0/chatbot-redis-0 are StatefulSets and need
+# this to actually sleep), kept explicit here so the intent survives a
+# future upstream default change.
+apiVersion: kube-green.com/v1alpha1
+kind: SleepInfo
+metadata:
+  name: training-platform-overnight
+  namespace: training-platform
+spec:
+  weekdays: "1-5"
+  sleepAt: "20:00"
+  wakeUpAt: "08:00"
+  timeZone: "Europe/Paris"
+  suspendStatefulSets: true
