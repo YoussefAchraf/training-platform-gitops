@@ -39,12 +39,21 @@ jobs:
           done
 
       - name: helm lint (every chart)
+        # Skips directories with no Chart.yaml - not every charts/*/
+        # entry is a Helm chart. charts/kube-green-sleepinfo is a plain
+        # manifest directory on purpose (see its own header comment for
+        # why: giving it a Chart.yaml so it "counts" as a chart here
+        # would break the ArgoCD Application that deploys it, which
+        # uses an explicit directory: source, not helm:, and would try
+        # to apply Chart.yaml itself as a raw K8s manifest).
         run: |
           set -e
           for c in charts/*/; do
-            echo "::group::helm lint $c"
-            helm lint "$c"
-            echo "::endgroup::"
+            if [ -f "$c/Chart.yaml" ]; then
+              echo "::group::helm lint $c"
+              helm lint "$c"
+              echo "::endgroup::"
+            fi
           done
 
       - name: Install kubeconform
@@ -114,10 +123,20 @@ jobs:
           done
 
       - name: Render every chart to a single manifest set
+        # charts/*/ entries with no Chart.yaml are plain manifest
+        # directories (see charts/kube-green-sleepinfo), not Helm
+        # charts - copied straight through instead of `helm template`,
+        # which would fail on them, so kube-linter below still covers
+        # their content.
         run: |
+          set -e
           mkdir -p /tmp/rendered
           for c in charts/*/; do
             name=$(basename "$c")
+            if [ ! -f "$c/Chart.yaml" ]; then
+              cat "$c"/*.yaml > "/tmp/rendered/${name}.yaml"
+              continue
+            fi
             valuesfile="environments/local-okd/${name}-values.yaml"
             if [ -f "$valuesfile" ]; then
               helm template "$c" -f "$valuesfile" > "/tmp/rendered/${name}.yaml"
