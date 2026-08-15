@@ -85,8 +85,13 @@ jobs:
           kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=postgres \
             -n training-platform --timeout=60s
 
-      - name: Install kubescape CLI
-        run: curl -s https://raw.githubusercontent.com/kubescape/kubescape/master/install.sh | /bin/bash
+      # Non-blocking, same as the scan below - real finding, hit live: this
+      # third-party installer flaked once (exit 1, no useful error from
+      # `curl -s`) and took the whole job down before ever reaching the
+      # scan step, which was ALREADY report-only. A flaky upstream
+      # installer shouldn't fail the job any more than a real finding does.
+      - name: Install kubescape CLI (report-only for now)
+        run: (curl -s https://raw.githubusercontent.com/kubescape/kubescape/master/install.sh | /bin/bash) || true
 
       - name: kubescape scan framework nsa (live cluster, report-only for now)
-        run: kubescape scan framework nsa --format-version v2 || true
+        run: command -v kubescape >/dev/null && kubescape scan framework nsa --format-version v2 || true
