@@ -1,0 +1,20 @@
+# SOPS encryption config - auto-selects the age recipient for
+# environments/local-okd/app-secrets.sops.env so `sops -e`/`sops <file>`
+# never need --age on the command line. Single shared age keypair -
+# single-developer local lab, no multi-person key rotation to design for
+# (same reasoning as charts/vault using file storage, not raft: no
+# multi-node HA need to justify the complexity).
+#
+# path_regex is matched relative to THIS file's own directory (repo
+# root), not CWD and not an absolute path - this file must stay at repo
+# root, and the regex must not have a leading "./", or sops reports
+# "no matching creation rules found" (confirmed getsops/sops#480).
+#
+# The public key below is not secret - that's the point of asymmetric
+# encryption. Only the matching private key
+# (%AppData%\sops\age\keys.txt on Windows - never committed, see
+# .gitignore) can decrypt. Generate a new one with:
+#   age-keygen -o "$env:AppData\sops\age\keys.txt"
+creation_rules:
+  - path_regex: environments[/\\]local-okd[/\\]app-secrets\.sops\.env$
+    age: 'age1et7ea8qwhfpazhyt8fsxgphyv0mxjr4zqn3jthh5rph2rgzw6y6spv2ujf'
