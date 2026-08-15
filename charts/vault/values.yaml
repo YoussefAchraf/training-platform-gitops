@@ -119,12 +119,13 @@ vault:
     # init-secret-rbac.yaml), not which CA signed the API server's cert.
     #
     # Deliberately still does NOT reseed actual secret values (JWT_SECRET,
-    # passwords, the AI proxy key) - those come from this machine's local
-    # .env files via scripts/vault-seed.js, which has no access to files
-    # outside the cluster. That remains a deliberate manual step when
-    # secret VALUES change; this script only ever rebuilds structure
-    # (auth method, KV mount, policies, roles) and now also the
-    # init/unseal state, both of which persist correctly going forward.
+    # passwords, the AI proxy key) - those come from
+    # environments/local-okd/app-secrets.sops.env, decrypted in-memory by
+    # scripts/vault-seed.js (see docs/secrets-inventory.md). That remains
+    # a deliberate manual step when secret VALUES change; this sidecar
+    # only ever rebuilds structure (auth method, KV mount, policies,
+    # roles) and now also the init/unseal state, both of which persist
+    # correctly going forward.
     extraContainers:
       - name: vault-bootstrap
         image: "hashicorp/vault:1.17.2"

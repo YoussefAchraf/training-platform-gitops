@@ -9,6 +9,17 @@
 environments/**/*-secrets.yaml
 .env
 
+# SOPS+age plaintext scratch file - only ever exists on disk transiently
+# while creating/editing environments/local-okd/app-secrets.sops.env;
+# the committed file is the ciphertext, this is not.
+environments/local-okd/app-secrets.plaintext.env
+
+# age private key, if you ever keep a local copy inside this checkout
+# instead of the OS-level default location - sops's real default lookup
+# path is already outside the repo (%AppData%\sops\age\keys.txt on
+# Windows); this is a defensive backstop only.
+*.agekey
+
 # Local tooling state
 .vault-token
 kubeconfig
