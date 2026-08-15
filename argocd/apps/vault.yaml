@@ -32,3 +32,16 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=false
+  # vault-agent-injector patches its own MutatingWebhookConfiguration with
+  # a self-generated CA cert at startup (confirmed live: git's manifest -
+  # and the last-applied-configuration annotation reflecting it - has
+  # caBundle: "", the live object has a real ~2.3KB cert). Permanent,
+  # expected drift with no functional difference to ignore, not a
+  # transient timing issue - without this, ArgoCD reports this
+  # Application OutOfSync forever.
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      name: vault-agent-injector-cfg
+      jsonPointers:
+        - /webhooks/0/clientConfig/caBundle
