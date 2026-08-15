@@ -203,6 +203,28 @@ jobs:
       # published — re-scanning them here would just duplicate that gate,
       # and this repo can't resolve their placeholder tags anyway (see
       # environments/local-okd/*-values.yaml's REPLACE_WITH_* comments).
+      # skip-files excludes /usr/local/bin/gosu specifically, not a
+      # blanket ignore. Real finding, hit live and escalated (2 CVEs on
+      # first run, 7 by the next PR - Trivy's DB keeps finding new
+      # issues in the same underlying vulnerable Go stdlib version
+      # gosu is statically compiled against): a per-CVE-ID
+      # `.trivyignore` would need updating every time a new CVE number
+      # shows up in the same component, which isn't "fixed", it's
+      # "temporarily quiet". Excluding the file itself is durable
+      # because the reason it's safe doesn't depend on which CVE:
+      # gosu's entire job (per its own docs) is dropping root privilege
+      # and exec'ing the given command once at container startup - it
+      # never parses network input, DNS, Punycode, HTML, XML, or URLs,
+      # which is exactly the class of code path every CVE found here so
+      # far is actually in (net/http, x/net/idna, html/template,
+      # encoding/xml, net/url, crypto/tls). Those code paths exist in
+      # the binary only because Go statically links the whole stdlib
+      # in, not because gosu ever executes them. If postgres's official
+      # image ever ships a patched gosu, this line becomes a no-op, not
+      # a problem - skip-files on a file Trivy finds nothing in is
+      # harmless. Revisit only if gosu's own actual behavior ever
+      # changes (a new postgres major version, a different entrypoint
+      # mechanism).
       - name: Trivy — postgres:16-alpine
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -210,6 +232,7 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: "1"
           ignore-unfixed: true
+          skip-files: /usr/local/bin/gosu
 
       - name: Trivy — redis:7-alpine
         uses: aquasecurity/trivy-action@v0.36.0
