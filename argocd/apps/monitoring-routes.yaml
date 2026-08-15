@@ -1,0 +1,45 @@
+# Split out of monitoring.yaml specifically so these two Route resources
+# are never subject to that Application's ServerSideApply=true (needed
+# there for kube-prometheus-stack's oversized CRDs, but it forces
+# structured-merge-diff on every resource in the Application - including
+# Route, whose OpenAPI schema ArgoCD can't resolve, which was a permanent
+# ComparisonError on every sync attempt). See
+# charts/monitoring-routes/Chart.yaml for the full story.
+#
+# Sync-wave 3: one after monitoring.yaml's wave 2, so these Routes'
+# target Services (monitoring-grafana, monitoring-kube-prometheus-
+# prometheus) already exist by the time ArgoCD applies them. Not
+# strictly required (OpenShift allows a Route to point at a
+# not-yet-existing Service), but keeps this deterministic rather than
+# relying on it.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring-routes
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/YoussefAchraf/training-platform-gitops.git
+    targetRevision: main
+    path: charts/monitoring-routes
+    helm:
+      # Pinned to match monitoring.yaml's own release name (== that
+      # Application's metadata.name, ArgoCD's default) so `{{
+      # .Release.Name }}-grafana` / `-kube-prometheus-prometheus` in
+      # these templates resolve to the real, already-live Service names
+      # instead of "monitoring-routes-*".
+      releaseName: monitoring
+      valueFiles:
+        - ../../environments/local-okd/monitoring-routes-values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
