@@ -24,8 +24,6 @@ spec:
     repoURL: https://github.com/YoussefAchraf/training-platform-gitops.git
     targetRevision: main
     path: charts/kube-green-sleepinfo
-    directory:
-      recurse: false
   destination:
     server: https://kubernetes.default.svc
     namespace: training-platform
