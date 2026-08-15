@@ -131,6 +131,76 @@ data:
               "thresholds": { "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] }
             }
           }
+        },
+        {
+          "id": 8,
+          "type": "timeseries",
+          "title": "CPU Usage Over Time (cores)",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "expr": "sum by (pod) (node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{namespace=~\"$namespace\"})", "legendFormat": "{{`{{pod}}`}}", "refId": "A" }
+          ]
+        },
+        {
+          "id": 9,
+          "type": "timeseries",
+          "title": "Memory Usage Over Time",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "bytes" } },
+          "targets": [
+            { "expr": "sum by (pod) (node_namespace_pod_container:container_memory_working_set_bytes{namespace=~\"$namespace\"})", "legendFormat": "{{`{{pod}}`}}", "refId": "A" }
+          ]
+        },
+        {
+          "id": 10,
+          "type": "bargauge",
+          "title": "Current CPU Usage by Pod (cores)",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [
+            { "expr": "sum by (pod) (node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{namespace=~\"$namespace\"})", "legendFormat": "{{`{{pod}}`}}", "instant": true, "refId": "A" }
+          ]
+        },
+        {
+          "id": 11,
+          "type": "bargauge",
+          "title": "Current Memory Usage by Pod",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "bytes" } },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [
+            { "expr": "sum by (pod) (node_namespace_pod_container:container_memory_working_set_bytes{namespace=~\"$namespace\"})", "legendFormat": "{{`{{pod}}`}}", "instant": true, "refId": "A" }
+          ]
+        },
+        {
+          "id": 12,
+          "type": "bargauge",
+          "title": "CPU % of Limit by Pod",
+          "description": "Usage as a percentage of each pod's own CPU limit. A pod with no CPU limit set won't appear here (no denominator to divide by, not an error). For a multi-container pod where only some containers have a limit set, this ratio can read inflated, since usage sums across all containers but the denominator only sums containers that have a limit.",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 70 }, { "color": "red", "value": 90 } ] } } },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [
+            { "expr": "sum by (pod) (node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{namespace=~\"$namespace\"}) / sum by (pod) (kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"cpu\"}) * 100", "legendFormat": "{{`{{pod}}`}}", "instant": true, "refId": "A" }
+          ]
+        },
+        {
+          "id": 13,
+          "type": "bargauge",
+          "title": "Memory % of Limit by Pod",
+          "description": "Usage as a percentage of each pod's own memory limit. A pod with no memory limit set won't appear here (no denominator to divide by, not an error). For a multi-container pod where only some containers have a limit set, this ratio can read inflated, since usage sums across all containers but the denominator only sums containers that have a limit.",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 70 }, { "color": "red", "value": 90 } ] } } },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [
+            { "expr": "sum by (pod) (node_namespace_pod_container:container_memory_working_set_bytes{namespace=~\"$namespace\"}) / sum by (pod) (kube_pod_container_resource_limits{namespace=~\"$namespace\", resource=\"memory\"}) * 100", "legendFormat": "{{`{{pod}}`}}", "instant": true, "refId": "A" }
+          ]
         }
       ]
     }
