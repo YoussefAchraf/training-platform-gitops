@@ -40,3 +40,27 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+  # Both permanent, expected drift with no functional difference to
+  # ignore - confirmed live via each resource's own
+  # last-applied-configuration annotation, not a transient timing issue:
+  #  - kube-green-manager-role has aggregationRule.clusterRoleSelectors
+  #    set (confirmed live), so Kubernetes' own RBAC aggregation
+  #    controller fills in .rules server-side from other ClusterRoles
+  #    matching that label - git legitimately ships 0 static rules, live
+  #    always has some.
+  #  - sleepinfos.kube-green.com's .status (acceptedNames/conditions) is
+  #    the API server's own CRD-establishment bookkeeping, and
+  #    .spec.conversion is defaulted server-side when git doesn't set
+  #    one - true of every CRD, never present in the applied manifest.
+  ignoreDifferences:
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: kube-green-manager-role
+      jsonPointers:
+        - /rules
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+      name: sleepinfos.kube-green.com
+      jsonPointers:
+        - /spec/conversion
+        - /status
