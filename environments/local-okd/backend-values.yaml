@@ -8,7 +8,7 @@ image:
   # fix) — confirmed pullable via `docker manifest inspect` 2026-08-12.
   # Never a floating `latest`, per CHANGES-PLAN.md's own conclusion that
   # risked pulling a pre-fix image.
-  tag: "sha-8686d5d"
+  tag: "sha-13c0f64"
 
 route:
   host: "api-training-platform.apps-crc.testing"   # replace with your local OKD's real Route subdomain
