@@ -41,7 +41,13 @@ env:
   TRUST_PROXY: "true"                          # behind an OKD Route now, unlike bare local Docker
   JWT_EXPIRES_IN: "8h"
   REFRESH_TOKEN_TTL_DAYS: "30"
-  SMTP_HOST: "smtp.mailtrap.io"
+  # Real finding: this said smtp.mailtrap.io while SMTP_USER/SMTP_PASS
+  # (Vault-delivered, see docs/secrets-inventory.md) have always been a
+  # real Gmail account + app password, never Mailtrap credentials - every
+  # send failed "535 5.7.0 Invalid credentials" because the host and the
+  # credentials were for two different providers. Fixed by pointing the
+  # host at the provider the credentials actually belong to.
+  SMTP_HOST: "smtp.gmail.com"
   SMTP_PORT: "587"
   SMTP_FROM: "Training Platform <no-reply@training-platform.com>"
   REPORT_JOB_CRON: "*/10 * * * *"
