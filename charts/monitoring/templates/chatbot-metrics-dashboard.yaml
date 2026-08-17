@@ -1,0 +1,158 @@
+# Token usage, estimated cost, and reliability for the chatbot's 4 role
+# sub-workflows - sourced from training-platform-chatbot-n8n's own
+# metrics-exporter (see charts/chatbot/templates/metrics-exporter-*.yaml),
+# which polls n8n's execution history and exposes chatbot_* metrics that
+# n8n's own built-in Prometheus metrics don't cover (token/cost data lives
+# inside each execution's raw data, not in any metric n8n exposes itself).
+#
+# Picked up automatically by Grafana's dashboard sidecar - any ConfigMap
+# labeled grafana_dashboard: "1" in this namespace gets loaded, same
+# mechanism as pod-health-dashboard.yaml (see that file's own comment for
+# why this has to live in this chart/namespace, not charts/chatbot).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chatbot-metrics-dashboard
+  labels:
+    grafana_dashboard: "1"
+data:
+  chatbot-metrics.json: |
+    {
+      "title": "Chatbot Token Usage & Cost",
+      "uid": "chatbot-token-metrics",
+      "editable": true,
+      "schemaVersion": 39,
+      "version": 1,
+      "tags": ["training-platform", "chatbot"],
+      "time": { "from": "now-6h", "to": "now" },
+      "refresh": "30s",
+      "templating": {
+        "list": [
+          {
+            "name": "role",
+            "type": "query",
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "query": "label_values(chatbot_tokens_total, role)",
+            "refresh": 2,
+            "includeAll": true,
+            "multi": true,
+            "current": { "text": "All", "value": "$__all" }
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "Total Tokens (prompt + completion)",
+          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "expr": "sum(chatbot_tokens_total{role=~\"$role\"}) or vector(0)", "instant": true, "refId": "A" }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Estimated Cost (USD)",
+          "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+          "description": "Estimate only, from configurable per-1M-token prices (AI_PRICE_*_PER_1M_USD) - not a billed figure.",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 4 } },
+          "targets": [
+            { "expr": "sum(chatbot_cost_usd_total{role=~\"$role\"}) or vector(0)", "instant": true, "refId": "A" }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Total Chatbot Requests",
+          "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "expr": "sum(chatbot_requests_total) or vector(0)", "instant": true, "refId": "A" }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Cache Hit Rate",
+          "description": "Share of requests answered from cache (0 tokens spent) rather than a live model call.",
+          "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "percentunit", "thresholds": { "steps": [ { "color": "blue", "value": null } ] } } },
+          "targets": [
+            { "expr": "sum(chatbot_requests_total{outcome=\"cache_hit\"}) / sum(chatbot_requests_total) or vector(0)", "instant": true, "refId": "A" }
+          ]
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "Token Usage by Role (prompt vs completion)",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "expr": "sum by (role, type) (rate(chatbot_tokens_total{role=~\"$role\"}[5m]))", "legendFormat": "{{`{{role}}`}} - {{`{{type}}`}}", "refId": "A" }
+          ]
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "Estimated Cost by Role",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "currencyUSD" } },
+          "targets": [
+            { "expr": "sum by (role) (rate(chatbot_cost_usd_total{role=~\"$role\"}[5m]))", "legendFormat": "{{`{{role}}`}}", "refId": "A" }
+          ]
+        },
+        {
+          "id": 7,
+          "type": "bargauge",
+          "title": "Requests by Outcome",
+          "description": "success / cache_hit / guardrail_blocked / rate_limited / unauthorized / role_not_recognized",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [
+            { "expr": "sum by (outcome) (chatbot_requests_total)", "legendFormat": "{{`{{outcome}}`}}", "instant": true, "refId": "A" }
+          ]
+        },
+        {
+          "id": 8,
+          "type": "timeseries",
+          "title": "Execution Duration (p95) by Workflow",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "s" } },
+          "targets": [
+            { "expr": "histogram_quantile(0.95, sum by (le, workflow) (rate(chatbot_execution_duration_seconds_bucket[5m])))", "legendFormat": "{{`{{workflow}}`}}", "refId": "A" }
+          ]
+        },
+        {
+          "id": 9,
+          "type": "bargauge",
+          "title": "Model Calls by Role",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [
+            { "expr": "sum by (role) (chatbot_model_calls_total{role=~\"$role\"})", "legendFormat": "{{`{{role}}`}}", "instant": true, "refId": "A" }
+          ]
+        },
+        {
+          "id": 10,
+          "type": "table",
+          "title": "Tool Call Reliability (success vs error)",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "expr": "sum by (tool, status) (chatbot_tool_calls_total)", "instant": true, "format": "table", "refId": "A" }
+          ],
+          "transformations": [
+            { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true }, "indexByName": {}, "renameByName": { "tool": "Tool", "status": "Status", "Value": "Calls" } } },
+            { "id": "sortBy", "options": { "fields": {}, "sort": [ { "field": "Calls", "desc": true } ] } }
+          ]
+        }
+      ]
+    }

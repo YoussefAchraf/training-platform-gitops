@@ -35,10 +35,16 @@ redis:
     storageClassName: ""
 
 metricsExporter:
-  # Disabled per explicit request: n8n chatbot only, no metrics/cost
-  # sidecar for now. Its only consumer (Prometheus) isn't deployed here
-  # either — see docs/runbook.md §6 if that changes later.
-  enabled: false
+  # Enabled: charts/monitoring (kube-prometheus-stack) is live now, so the
+  # earlier blocker ("its only consumer isn't deployed here") no longer
+  # applies. serviceMonitor.enabled below turns on the actual Prometheus
+  # scrape config - the chart's own default leaves that one off until this
+  # environment explicitly says monitoring exists. See
+  # charts/monitoring/templates/chatbot-metrics-dashboard.yaml for the
+  # Grafana side of this.
+  enabled: true
+  serviceMonitor:
+    enabled: true
   image:
     # sha-5439b44 = last successful docker-publish.yml run
     # (2026-08-11T18:45:20Z) — includes the set -a/set +a Vault env-export
