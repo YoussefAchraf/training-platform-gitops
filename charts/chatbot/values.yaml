@@ -9,9 +9,12 @@ n8n:
     pullPolicy: IfNotPresent
   service:
     port: 5678
-  route:
-    host: ""                # set in environments/local-okd/chatbot-values.yaml, e.g. n8n-training-platform.apps-crc.testing
-    tlsTermination: edge
+  # No Route: n8n is reachable only inside the cluster, over its Service
+  # (n8n.<namespace>.svc.cluster.local:5678). The frontend's nginx
+  # reverse-proxies the one chatbot webhook path to it - see
+  # training-platform-frontend's docker/default.conf.template and
+  # ARCHITECTURE-PLAN.md §6. The n8n editor UI has no external access this
+  # way; for occasional admin access, use `oc port-forward svc/n8n 5678:5678`.
   resources:
     requests:
       cpu: 200m

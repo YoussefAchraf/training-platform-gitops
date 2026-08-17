@@ -10,10 +10,15 @@ n8n:
     # fix (chatbot-n8n PR #11). Confirmed pullable via `docker manifest
     # inspect` 2026-08-11.
     tag: "sha-2f36d00"
-  route:
-    host: "n8n-training-platform.apps-crc.testing"   # replace with your local OKD's real Route subdomain
+  # No Route (see charts/chatbot/values.yaml) - only reachable inside the
+  # cluster, via the frontend's reverse proxy.
   env:
-    N8N_WEBHOOK_URL: "https://n8n-training-platform.apps-crc.testing/"   # must match n8n.route.host above, trailing slash required
+    # n8n's own view of its externally-reachable base URL. Now that n8n has
+    # no Route of its own, the only real external path to the webhook is
+    # through the frontend's proxy - this must match frontend's route.host
+    # in frontend-values.yaml, trailing slash required (was previously kept
+    # in sync with n8n.route.host above instead, before it existed).
+    N8N_WEBHOOK_URL: "https://training-platform.apps-crc.testing/"
     N8N_OWNER_EMAIL: "admin@localhost.local"          # change before exposing this instance beyond your own machine
     # Not secret (just an endpoint URL) — the actual key is Vault-delivered
     # (n8n_ai_api_key). Real finding: bootstrap.js defaults AI_BASE_URL to
