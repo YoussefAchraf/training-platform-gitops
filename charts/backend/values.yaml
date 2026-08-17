@@ -8,9 +8,10 @@ replicaCount: 1
 service:
   port: 4000
 
-route:
-  host: ""              # set in environments/local-okd/backend-values.yaml, e.g. api-training-platform.apps-crc.testing
-  tlsTermination: edge
+# No Route: backend is reachable only inside the cluster, over its Service
+# (backend.<namespace>.svc.cluster.local:4000). The frontend's nginx
+# reverse-proxies /api/ to it - see training-platform-frontend's
+# docker/default.conf.template and ARCHITECTURE-PLAN.md §4.
 
 # See ARCHITECTURE-PLAN.md §4: backend's Dockerfile runs `USER node`
 # (fixed named user), not arbitrary-uid-safe by default. The Dockerfile fix
