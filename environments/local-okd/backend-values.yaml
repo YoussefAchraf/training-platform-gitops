@@ -8,10 +8,10 @@ image:
   # fix) — confirmed pullable via `docker manifest inspect` 2026-08-12.
   # Never a floating `latest`, per CHANGES-PLAN.md's own conclusion that
   # risked pulling a pre-fix image.
-  tag: "sha-8686d5d"
+  tag: "sha-13c0f64"
 
-route:
-  host: "api-training-platform.apps-crc.testing"   # replace with your local OKD's real Route subdomain
+# No Route (see charts/backend/values.yaml) - only reachable inside the
+# cluster, via the frontend's reverse proxy.
 
 env:
   CLIENT_URL: "https://training-platform.apps-crc.testing"   # the frontend's Route host
@@ -22,14 +22,13 @@ env:
   # `npx web-push generate-vapid-keys` if this pair is ever rotated — must
   # stay identical to frontend-values.yaml's VITE_VAPID_PUBLIC_KEY.
   VAPID_PUBLIC_KEY: "BNS64Kb9w84XhbJsqcwhqOt0djB-cwlZNXKNdgPmAlpcraWkSMfsNgkTzkyuBbA7L5Hq4C52Jcm9yWV8fLOhu58"
-  # Real finding from an actual OKD deploy: frontend and backend live on
-  # different subdomains here, so the CSRF cookie (no domain by default)
-  # was invisible to the frontend's own JS — every approve/reject/update
-  # action failed with "Invalid CSRF token". See
-  # training-platform-backend PR #75 for the root cause. Must be the
-  # shared parent domain of both this Route's host and frontend's Route
-  # host above.
-  COOKIE_DOMAIN: ".apps-crc.testing"
+  # COOKIE_DOMAIN intentionally unset now: it existed only because frontend
+  # and backend used to live on different subdomains (training-platform-
+  # backend PR #75's "Invalid CSRF token" fix). Now that the browser only
+  # ever calls the frontend's origin — which reverse-proxies to backend
+  # internally — cookies default to that single origin correctly with no
+  # explicit Domain needed, and an explicit one would only widen their
+  # scope for no reason.
 
 vault:
   enabled: true   # Vault (charts/vault) must be deployed and backend-role configured BEFORE this app syncs — see docs/runbook.md, Vault now comes before backend in the build order

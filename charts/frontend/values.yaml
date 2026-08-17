@@ -34,16 +34,19 @@ resources:
 # Runtime env — NOT the VITE_* build args (those are baked into the JS
 # bundle at image build time and cannot be changed here, see the note
 # below). These two ARE read at container start by
-# docker/docker-entrypoint.sh to render the nginx CSP's connect-src.
-# Must match the real backend/chatbot Route hosts, or the browser's CSP
-# will block the frontend's own API/webhook calls.
+# docker/docker-entrypoint.sh, which renders them into nginx's
+# reverse-proxy config (proxy_pass for /api/ and the chatbot webhook).
+# Backend and n8n have no Route of their own — the browser only ever
+# calls this frontend's own origin; these must point at their internal
+# Service DNS instead.
 env:
-  API_ORIGIN: ""         # e.g. https://api-training-platform.apps-crc.testing
-  CHATBOT_ORIGIN: ""     # e.g. https://n8n-training-platform.apps-crc.testing
+  BACKEND_UPSTREAM: ""   # e.g. http://backend.training-platform.svc.cluster.local:4000
+  CHATBOT_UPSTREAM: ""   # e.g. http://n8n.training-platform.svc.cluster.local:5678
 
-# Reminder, not a chart setting: VITE_API_URL / VITE_CHATBOT_WEBHOOK_URL /
-# VITE_VAPID_PUBLIC_KEY are compiled into the JS bundle at `docker build`
-# time in training-platform-frontend's own CI. This chart cannot override
-# them — the image must be rebuilt with --build-arg values pointed at this
-# environment's real Route hostnames before this chart is useful. See
-# ARCHITECTURE-PLAN.md §6 and docs/runbook.md.
+# Reminder, not a chart setting: VITE_API_URL / VITE_CHATBOT_WEBHOOK_URL are
+# compiled into the JS bundle at `docker build` time in
+# training-platform-frontend, but as same-origin relative paths now (/api,
+# /webhook/chatbot/message) — they no longer need to match anything
+# environment-specific, so this image doesn't need rebuilding per
+# environment the way it used to. Only VITE_VAPID_PUBLIC_KEY still does.
+# See ARCHITECTURE-PLAN.md §6 and docs/runbook.md.

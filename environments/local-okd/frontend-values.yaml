@@ -1,15 +1,24 @@
 image:
-  # Built 2026-08-11 with --build-arg VITE_API_URL/VITE_CHATBOT_WEBHOOK_URL/
-  # VITE_VAPID_PUBLIC_KEY pointed at this environment's real Route hosts
-  # (below), then pushed to ghcr.io/youssefachraf/training-platform-frontend.
-  # Must be rebuilt again (see docs/runbook.md §5) if either Route host ever
-  # changes — this chart cannot fix that at deploy time, the build-arg
-  # values are baked into the JS bundle at image build time.
+  # Rebuilt 2026-08-17: VITE_API_URL/VITE_CHATBOT_WEBHOOK_URL are now
+  # same-origin relative paths (/api, /webhook/chatbot/message) rather than
+  # this environment's Route hosts, so — unlike before — this image no
+  # longer needs rebuilding if a Route host ever changes; only
+  # VITE_VAPID_PUBLIC_KEY still gets baked in per environment. Pushed to
+  # ghcr.io/youssefachraf/training-platform-frontend:local-okd. Note for
+  # whoever redeploys this: pullPolicy is IfNotPresent and this tag name is
+  # reused in place (not content-addressed), so a node that already cached
+  # the old `local-okd` image won't automatically re-pull this one — force
+  # a fresh pull (e.g. delete the pod after confirming the new digest, or
+  # switch to Always for one rollout) rather than assuming a Sync picks it up.
   tag: "local-okd"
 
 route:
   host: "training-platform.apps-crc.testing"   # replace with your local OKD's real Route subdomain
 
 env:
-  API_ORIGIN: "https://api-training-platform.apps-crc.testing"     # must match backend-values.yaml's route.host
-  CHATBOT_ORIGIN: "https://n8n-training-platform.apps-crc.testing" # must match chatbot-values.yaml's n8n.route.host
+  # Internal Service DNS - nginx reverse-proxies here (see
+  # training-platform-frontend's docker/default.conf.template). Neither
+  # backend nor n8n has a Route anymore (see backend-values.yaml,
+  # chatbot-values.yaml) - the browser never talks to them directly.
+  BACKEND_UPSTREAM: "http://backend.training-platform.svc.cluster.local:4000"
+  CHATBOT_UPSTREAM: "http://n8n.training-platform.svc.cluster.local:5678"
