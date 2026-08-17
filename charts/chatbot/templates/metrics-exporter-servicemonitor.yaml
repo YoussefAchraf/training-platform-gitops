@@ -2,6 +2,15 @@
 # charts/monitoring is installed (build order step 6). Off by default.
 # Also requires metricsExporter.enabled (no point scraping a Service that
 # doesn't exist because the exporter itself is disabled).
+#
+# release: monitoring is required, not decorative - confirmed live that
+# kube-prometheus-stack's Prometheus CR only watches ServiceMonitors
+# matching spec.serviceMonitorSelector (matchLabels: {release: monitoring}
+# in this repo's own environments/local-okd/monitoring-values.yaml), on
+# top of the namespace-wide serviceMonitorNamespaceSelector. Without this
+# label the ServiceMonitor exists but is silently never scraped - caught
+# by checking Prometheus's actual /api/v1/targets after first enabling
+# this, not by anything that fails loudly.
 {{- if and .Values.metricsExporter.enabled .Values.metricsExporter.serviceMonitor.enabled }}
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
@@ -10,6 +19,7 @@ metadata:
   labels:
     app.kubernetes.io/name: metrics-exporter
     app.kubernetes.io/part-of: training-platform
+    release: monitoring
 spec:
   selector:
     matchLabels:
