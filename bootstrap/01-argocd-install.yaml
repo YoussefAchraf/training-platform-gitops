@@ -176,7 +176,15 @@ spec:
           extraArgs:
             - --insecure   # TLS terminates at the OKD Route (edge), not here
           route:
-            enabled: false # created explicitly below via the frontend/backend pattern is not needed for argocd itself in this local setup; use `oc expose svc/argocd-server` or add a Route here later if external UI access is wanted
+            # Turned on: external UI access is wanted now. --insecure above
+            # was already set in anticipation of exactly this — TLS
+            # terminates at the Route (edge), matching every other Route in
+            # this repo (frontend, grafana, prometheus), not at
+            # argocd-server itself.
+            enabled: true
+            hostname: "argocd-training-platform.apps-crc.testing"
+            termination_type: edge
+            termination_policy: Redirect
           resources:
             requests:
               cpu: 50m
