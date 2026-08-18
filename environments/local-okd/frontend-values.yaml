@@ -1,15 +1,15 @@
 image:
-  # Rebuilt 2026-08-17: VITE_API_URL/VITE_CHATBOT_WEBHOOK_URL are now
-  # same-origin relative paths (/api, /webhook/chatbot/message) rather than
-  # this environment's Route hosts, so — unlike before — this image no
-  # longer needs rebuilding if a Route host ever changes; only
-  # VITE_VAPID_PUBLIC_KEY still gets baked in per environment. Pushed to
-  # ghcr.io/youssefachraf/training-platform-frontend:local-okd. Note for
-  # whoever redeploys this: pullPolicy is IfNotPresent and this tag name is
-  # reused in place (not content-addressed), so a node that already cached
-  # the old `local-okd` image won't automatically re-pull this one — force
-  # a fresh pull (e.g. delete the pod after confirming the new digest, or
-  # switch to Always for one rollout) rather than assuming a Sync picks it up.
+  # Auto-bumped now (2026-08-18): training-platform-frontend's own CI
+  # opens a PR here with a fresh sha-<commit> tag on every merge to its
+  # main, same automation backend/chatbot already had — see
+  # .github/workflows/docker-build-and-scan.yml in that repo. This became
+  # possible once VITE_API_URL/VITE_CHATBOT_WEBHOOK_URL turned into
+  # same-origin relative paths (no more environment-specific hostnames
+  # baked into the image), and VITE_VAPID_PUBLIC_KEY moved to a repo
+  # variable CI bakes in itself. Each bump is a genuinely new tag string,
+  # so pullPolicy: IfNotPresent triggers a real pull on its own — no more
+  # manual rebuild-and-force-pull dance the previous fixed `local-okd`
+  # tag needed.
   tag: "local-okd"
 
 route:
