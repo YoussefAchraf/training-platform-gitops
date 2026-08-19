@@ -52,10 +52,10 @@ existingSecret: postgres-credentials
 # Vault-vs-plain-Secret mismatch cost hours of debugging: postgres and
 # backend each had their OWN independently-set password that had to be
 # manually kept identical - the exact bug class this closes. When true,
-# postgres reads its own password from the same Vault path vault-seed.js
-# already writes to (sourced from the same .env value backend itself
-# uses), so there is structurally only one password, not two that must
-# happen to match.
+# postgres reads its own password from the same Vault path
+# scripts/vault-bootstrap-secrets.js already keeps in sync with backend's
+# own copy (see docs/secrets-inventory.md), so there is structurally only
+# one password, not two that must happen to match.
 vault:
   enabled: false
   role: postgres-role

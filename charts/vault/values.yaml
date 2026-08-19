@@ -34,6 +34,26 @@ vault:
     dataStorage:
       enabled: true
       size: 1Gi   # a handful of KV-v2 secrets + policies/roles, nowhere near upstream's 10Gi default
+    # Real Vault practice this repo was missing entirely until now: an
+    # audit device, so there's a durable, tamper-evident record of every
+    # secret read/write (who, what, when) - this becomes the real "who
+    # changed this secret" record now that scripts/vault-bootstrap-secrets.js
+    # replaced a git-committed encrypted file (git history used to be an
+    # accidental substitute for this; it never actually was one). The
+    # chart's own purpose-built mechanism (own PVC, mounted at /vault/audit
+    # on vault-server automatically) - not a subdirectory hack inside
+    # dataStorage's own storage-backend directory. Same reduced-from-10Gi-
+    # default sizing reasoning as dataStorage above.
+    #
+    # Honest caveat, not a hidden gotcha: Vault's file audit device is
+    # fail-closed - if it can't write, Vault stops serving ALL requests, not
+    # just logging. On this unrotated 1Gi PVC (no rotation/retention policy
+    # - genuinely out of scope at this solo-lab scale), a full audit disk
+    # is a latent DoS. See docs/runbook.md for the "audit disk full" symptom
+    # to check first if Vault ever starts refusing requests outright.
+    auditStorage:
+      enabled: true
+      size: 1Gi
     ha:
       enabled: false
     # Pinned explicitly (== what the chart's own fullname template would
@@ -120,11 +140,12 @@ vault:
     #
     # Deliberately still does NOT reseed actual secret values (JWT_SECRET,
     # passwords, the AI proxy key) - those come from
-    # environments/local-okd/app-secrets.sops.env, decrypted in-memory by
-    # scripts/vault-seed.js (see docs/secrets-inventory.md). That remains
-    # a deliberate manual step when secret VALUES change; this sidecar
-    # only ever rebuilds structure (auth method, KV mount, policies,
-    # roles) and now also the init/unseal state, both of which persist
+    # scripts/vault-bootstrap-secrets.js, run by hand against this Vault's
+    # API (see docs/secrets-inventory.md) - generates what it safely can,
+    # prompts a human for the rest, never through a file. That remains a
+    # deliberate manual step when secret VALUES change; this sidecar only
+    # ever rebuilds structure (auth method, KV mount, policies, roles,
+    # audit device) and the init/unseal state, all of which persist
     # correctly going forward.
     extraContainers:
       - name: vault-bootstrap
@@ -314,7 +335,24 @@ vault:
                 ttl=3600
 
               echo "[vault-bootstrap] done."
-              echo "[vault-bootstrap] REMINDER: run 'node scripts/vault-seed.js' now to seed real secret values - this sidecar only rebuilds structure, never secret data. Get VAULT_TOKEN from: oc get secret vault-init-keys -n vault -o jsonpath='{.data.root_token}' | base64 -d"
+              echo "[vault-bootstrap] REMINDER: run 'node scripts/vault-bootstrap-secrets.js' now to get real secret values in - this sidecar only rebuilds structure, never secret data. Get VAULT_TOKEN from: oc get secret vault-init-keys -n vault -o jsonpath='{.data.root_token}' | base64 -d"
+            fi
+
+            # Separately gated from the kubernetes-auth block above -
+            # deliberately, not nested inside it. On a cluster that's
+            # already past first boot (kubernetes auth already configured,
+            # like this one), that block's own condition is permanently
+            # false from here on, so anything nested inside it would never
+            # run again without a manual one-off command. A standalone
+            # check evaluates independently on every restart regardless of
+            # the auth block's own state - the only way this genuinely
+            # turns on for an already-running cluster on its own next boot.
+            if vault audit list -format=json 2>/dev/null | tr -d '[:space:]' | grep -q '"file/"'; then
+              echo "[vault-bootstrap] file audit device already enabled, nothing to do."
+            else
+              echo "[vault-bootstrap] enabling file audit device..."
+              vault audit enable file file_path=/vault/audit/vault-audit.log
+              echo "[vault-bootstrap] audit logging enabled -> /vault/audit/vault-audit.log"
             fi
 
             sleep infinity

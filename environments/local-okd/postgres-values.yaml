@@ -3,8 +3,8 @@ persistence:
   storageClassName: ""   # set after `oc get storageclass` on your local OKD install
 
 # Real password now comes from Vault (training-platform/data/postgres,
-# seeded by scripts/vault-seed.js from the same POSTGRES_PASSWORD value
-# backend's own .env already uses) instead of a separately-set Secret -
+# kept in sync with backend's own copy by scripts/vault-bootstrap-secrets.js
+# - see docs/secrets-inventory.md) instead of a separately-set Secret -
 # postgres now depends on Vault being Healthy first, same as backend/
 # chatbot (see argocd/apps/postgres.yaml's sync-wave comment).
 # postgres-credentials / postgres-secrets.example.yaml remain only as the

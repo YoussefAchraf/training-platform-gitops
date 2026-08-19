@@ -2,11 +2,11 @@
   "name": "training-platform-gitops-scripts",
   "private": true,
   "version": "1.0.0",
-  "description": "Standalone operational scripts for this gitops repo (vault-seed.js) — no runtime dependencies by design.",
+  "description": "Standalone operational scripts for this gitops repo (vault-bootstrap-secrets.js) — no runtime dependencies by design.",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "vault-seed": "node vault-seed.js"
+    "bootstrap-secrets": "node vault-bootstrap-secrets.js"
   }
 }

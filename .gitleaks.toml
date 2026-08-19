@@ -6,18 +6,3 @@
 # behavior since v8.25.0).
 [extend]
 useDefault = true
-
-# environments/local-okd/app-secrets.sops.env is SOPS+age ciphertext, not
-# a leaked secret - every value is individually encrypted (ENC[...]
-# blocks) and unreadable without the age private key, which never leaves
-# this machine and is never committed (see .gitignore). Ciphertext is
-# high-entropy by construction, which is exactly what gitleaks' generic
-# API key / entropy rules are built to flag - scoped to this one file's
-# path, globally (every rule, not one rule ID), rather than disabling or
-# re-tuning individual rules, because the reason it's safe (it's
-# ciphertext) doesn't depend on which rule matched it. Same "fix it so it
-# can't go stale" philosophy as the sca job's gosu skip-files exclusion
-# (.github/workflows/verify.yml).
-[[allowlists]]
-description = "SOPS+age encrypted secrets file — ciphertext, not a plaintext secret leak"
-paths = ['''^environments/local-okd/app-secrets\.sops\.env$''']
