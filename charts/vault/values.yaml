@@ -34,6 +34,45 @@ vault:
     dataStorage:
       enabled: true
       size: 1Gi   # a handful of KV-v2 secrets + policies/roles, nowhere near upstream's 10Gi default
+    # Real Vault practice this repo was missing entirely until now: an
+    # audit device, so there's a durable, tamper-evident record of every
+    # secret read/write (who, what, when) - this becomes the real "who
+    # changed this secret" record now that scripts/vault-bootstrap-secrets.js
+    # replaced a git-committed encrypted file (git history used to be an
+    # accidental substitute for this; it never actually was one).
+    #
+    # Deliberately NOT the chart's own auditStorage mechanism (its own
+    # separate PVC via a second volumeClaimTemplate entry) - confirmed live
+    # against the actual running cluster via a server-side dry-run
+    # (`oc apply --dry-run=server`) that Kubernetes flatly rejects adding a
+    # NEW volumeClaimTemplates entry to an ALREADY-EXISTING StatefulSet
+    # ("Forbidden: updates to statefulset spec for fields other than
+    # 'replicas', ... are forbidden" - confirmed on this cluster's actual
+    # v1.34.4). The only way around that is deleting and recreating the
+    # StatefulSet object (--cascade=orphan to preserve the running pod/PVC),
+    # forcing a live Vault pod restart+reseal cycle purely to add a nice-to-
+    # have separate volume - real, avoidable risk to a live secrets store
+    # for zero functional gain. Writing the audit log as a flat file
+    # (vault-audit.log) right at the EXISTING `data` PVC's own mount root
+    # (already mounted on vault-server at /vault/data by the chart
+    # automatically once dataStorage.enabled is true) needs no chart/values
+    # change here at all, no StatefulSet replacement, no forced restart -
+    # Vault's file-storage backend only ever touches its own internally-
+    # hashed paths under that mount, never a plainly-named file, so this
+    # doesn't collide with anything. Flat, not nested in a subdirectory,
+    # deliberately - `vault audit enable` creates the file itself but not
+    # missing parent directories, and the mount root is guaranteed to
+    # already exist, so nothing needs pre-creating.
+    #
+    # Honest caveat, not a hidden gotcha: Vault's file audit device is
+    # fail-closed - if it can't write, Vault stops serving ALL requests, not
+    # just logging. On this shared, unrotated 1Gi PVC (no rotation/retention
+    # policy - genuinely out of scope at this solo-lab scale), a full disk
+    # is a latent DoS for BOTH the audit log and Vault's own secret storage
+    # at once now that they share a volume - worth knowing, not worth
+    # provisioning a second PVC to avoid at this scale. See docs/runbook.md
+    # for the "audit disk full" symptom to check first if Vault ever starts
+    # refusing requests outright.
     ha:
       enabled: false
     # Pinned explicitly (== what the chart's own fullname template would
@@ -120,11 +159,12 @@ vault:
     #
     # Deliberately still does NOT reseed actual secret values (JWT_SECRET,
     # passwords, the AI proxy key) - those come from
-    # environments/local-okd/app-secrets.sops.env, decrypted in-memory by
-    # scripts/vault-seed.js (see docs/secrets-inventory.md). That remains
-    # a deliberate manual step when secret VALUES change; this sidecar
-    # only ever rebuilds structure (auth method, KV mount, policies,
-    # roles) and now also the init/unseal state, both of which persist
+    # scripts/vault-bootstrap-secrets.js, run by hand against this Vault's
+    # API (see docs/secrets-inventory.md) - generates what it safely can,
+    # prompts a human for the rest, never through a file. That remains a
+    # deliberate manual step when secret VALUES change; this sidecar only
+    # ever rebuilds structure (auth method, KV mount, policies, roles,
+    # audit device) and the init/unseal state, all of which persist
     # correctly going forward.
     extraContainers:
       - name: vault-bootstrap
@@ -314,7 +354,37 @@ vault:
                 ttl=3600
 
               echo "[vault-bootstrap] done."
-              echo "[vault-bootstrap] REMINDER: run 'node scripts/vault-seed.js' now to seed real secret values - this sidecar only rebuilds structure, never secret data. Get VAULT_TOKEN from: oc get secret vault-init-keys -n vault -o jsonpath='{.data.root_token}' | base64 -d"
+              echo "[vault-bootstrap] REMINDER: run 'node scripts/vault-bootstrap-secrets.js' now to get real secret values in - this sidecar only rebuilds structure, never secret data. Get VAULT_TOKEN from: oc get secret vault-init-keys -n vault -o jsonpath='{.data.root_token}' | base64 -d"
+            fi
+
+            # Separately gated from the kubernetes-auth block above -
+            # deliberately, not nested inside it. On a cluster that's
+            # already past first boot (kubernetes auth already configured,
+            # like this one), that block's own condition is permanently
+            # false from here on, so anything nested inside it would never
+            # run again without a manual one-off command. A standalone
+            # check evaluates independently on every restart regardless of
+            # the auth block's own state - the only way this genuinely
+            # turns on for an already-running cluster on its own next boot.
+            if vault audit list -format=json 2>/dev/null | tr -d '[:space:]' | grep -q '"file/"'; then
+              echo "[vault-bootstrap] file audit device already enabled, nothing to do."
+            else
+              echo "[vault-bootstrap] enabling file audit device..."
+              # The file itself is opened by vault-server (it owns the
+              # audit backend, not this sidecar) - vault-server already has
+              # the full `data` PVC mounted at /vault/data by the chart, so
+              # no extra volumeMount is needed here. File path deliberately
+              # flat, right at the mount root, not a subdirectory - `vault
+              # audit enable` creates the FILE but not missing parent
+              # directories, and this sidecar has no filesystem access to
+              # /vault/data itself to pre-create one (its own mount is a
+              # narrow subPath slice, /vault-init-scratch, for the
+              # crash-safe init-output file above). A flat path next to
+              # Vault's own storage-backend directory needs nothing
+              # pre-created - /vault/data itself is guaranteed to exist,
+              # it's the mount point.
+              vault audit enable file file_path=/vault/data/vault-audit.log
+              echo "[vault-bootstrap] audit logging enabled -> /vault/data/vault-audit.log"
             fi
 
             sleep infinity
