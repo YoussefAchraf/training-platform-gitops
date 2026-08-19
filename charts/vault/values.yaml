@@ -39,21 +39,40 @@ vault:
     # secret read/write (who, what, when) - this becomes the real "who
     # changed this secret" record now that scripts/vault-bootstrap-secrets.js
     # replaced a git-committed encrypted file (git history used to be an
-    # accidental substitute for this; it never actually was one). The
-    # chart's own purpose-built mechanism (own PVC, mounted at /vault/audit
-    # on vault-server automatically) - not a subdirectory hack inside
-    # dataStorage's own storage-backend directory. Same reduced-from-10Gi-
-    # default sizing reasoning as dataStorage above.
+    # accidental substitute for this; it never actually was one).
+    #
+    # Deliberately NOT the chart's own auditStorage mechanism (its own
+    # separate PVC via a second volumeClaimTemplate entry) - confirmed live
+    # against the actual running cluster via a server-side dry-run
+    # (`oc apply --dry-run=server`) that Kubernetes flatly rejects adding a
+    # NEW volumeClaimTemplates entry to an ALREADY-EXISTING StatefulSet
+    # ("Forbidden: updates to statefulset spec for fields other than
+    # 'replicas', ... are forbidden" - confirmed on this cluster's actual
+    # v1.34.4). The only way around that is deleting and recreating the
+    # StatefulSet object (--cascade=orphan to preserve the running pod/PVC),
+    # forcing a live Vault pod restart+reseal cycle purely to add a nice-to-
+    # have separate volume - real, avoidable risk to a live secrets store
+    # for zero functional gain. Writing the audit log as a flat file
+    # (vault-audit.log) right at the EXISTING `data` PVC's own mount root
+    # (already mounted on vault-server at /vault/data by the chart
+    # automatically once dataStorage.enabled is true) needs no chart/values
+    # change here at all, no StatefulSet replacement, no forced restart -
+    # Vault's file-storage backend only ever touches its own internally-
+    # hashed paths under that mount, never a plainly-named file, so this
+    # doesn't collide with anything. Flat, not nested in a subdirectory,
+    # deliberately - `vault audit enable` creates the file itself but not
+    # missing parent directories, and the mount root is guaranteed to
+    # already exist, so nothing needs pre-creating.
     #
     # Honest caveat, not a hidden gotcha: Vault's file audit device is
     # fail-closed - if it can't write, Vault stops serving ALL requests, not
-    # just logging. On this unrotated 1Gi PVC (no rotation/retention policy
-    # - genuinely out of scope at this solo-lab scale), a full audit disk
-    # is a latent DoS. See docs/runbook.md for the "audit disk full" symptom
-    # to check first if Vault ever starts refusing requests outright.
-    auditStorage:
-      enabled: true
-      size: 1Gi
+    # just logging. On this shared, unrotated 1Gi PVC (no rotation/retention
+    # policy - genuinely out of scope at this solo-lab scale), a full disk
+    # is a latent DoS for BOTH the audit log and Vault's own secret storage
+    # at once now that they share a volume - worth knowing, not worth
+    # provisioning a second PVC to avoid at this scale. See docs/runbook.md
+    # for the "audit disk full" symptom to check first if Vault ever starts
+    # refusing requests outright.
     ha:
       enabled: false
     # Pinned explicitly (== what the chart's own fullname template would
@@ -351,8 +370,21 @@ vault:
               echo "[vault-bootstrap] file audit device already enabled, nothing to do."
             else
               echo "[vault-bootstrap] enabling file audit device..."
-              vault audit enable file file_path=/vault/audit/vault-audit.log
-              echo "[vault-bootstrap] audit logging enabled -> /vault/audit/vault-audit.log"
+              # The file itself is opened by vault-server (it owns the
+              # audit backend, not this sidecar) - vault-server already has
+              # the full `data` PVC mounted at /vault/data by the chart, so
+              # no extra volumeMount is needed here. File path deliberately
+              # flat, right at the mount root, not a subdirectory - `vault
+              # audit enable` creates the FILE but not missing parent
+              # directories, and this sidecar has no filesystem access to
+              # /vault/data itself to pre-create one (its own mount is a
+              # narrow subPath slice, /vault-init-scratch, for the
+              # crash-safe init-output file above). A flat path next to
+              # Vault's own storage-backend directory needs nothing
+              # pre-created - /vault/data itself is guaranteed to exist,
+              # it's the mount point.
+              vault audit enable file file_path=/vault/data/vault-audit.log
+              echo "[vault-bootstrap] audit logging enabled -> /vault/data/vault-audit.log"
             fi
 
             sleep infinity
