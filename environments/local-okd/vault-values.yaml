@@ -5,5 +5,3 @@ vault:
   server:
     dataStorage:
       storageClass: ""
-    auditStorage:
-      storageClass: ""
