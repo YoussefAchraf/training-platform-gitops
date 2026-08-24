@@ -62,3 +62,87 @@ spec:
       # apply computes the diff on the API server instead of storing a
       # full-config annotation, so it isn't subject to this limit.
       - ServerSideApply=true
+  # These 7 CRDs are permanently OutOfSync, not transiently - confirmed live
+  # (`oc get crd prometheuses.monitoring.coreos.com -o json`, checked 4 of
+  # the 7 directly) that each one already carries an ownerReference to
+  # `ClusterVersion/version` plus OpenShift-specific labels
+  # (app.kubernetes.io/managed-by: cluster-version-operator,
+  # app.kubernetes.io/part-of: openshift-monitoring) and annotations
+  # (include.release.openshift.io/*) that this chart's own manifest never
+  # sets - these CRDs are part of OKD's own baseline release payload, not
+  # something this chart created from scratch. The chart's own version is
+  # the SAME upstream prometheus-operator release (operator.prometheus.io/
+  # version: 0.77.2 matches on both sides, confirmed) - only the top-level
+  # metadata differs, never the actual CRD spec/schema.
+  #
+  # Confirmed this is purely a diff-display mismatch, not a masked real
+  # difference, before adding this: a server-side dry-run apply
+  # (`oc apply --server-side --dry-run=server`) of the chart's own rendered
+  # prometheuses CRD against this live cluster succeeds cleanly with no
+  # conflict, and the OKD-owned fields are still present on the live object
+  # right now despite this Application's automated sync having already
+  # applied it repeatedly - server-side apply's field-ownership model
+  # already leaves other managers' fields alone in practice, ArgoCD's own
+  # diff view just doesn't reflect that the same way. Same reasoning as
+  # this repo's other ignoreDifferences entry (vault's webhook caBundle,
+  # argocd/apps/vault.yaml) - without this, this Application shows
+  # permanently OutOfSync for something that was never actually going to
+  # change on the next sync, making a real future problem harder to spot
+  # at a glance.
+  #
+  # Deliberately scoped to these 7 specific CRD names, not a blanket
+  # kind-wide rule - the chart defines 10 CRDs total; the other 3
+  # (probes, prometheusagents, scrapeconfigs) are newer CRD types this
+  # OKD baseline doesn't ship at all, so they have no such conflict and
+  # a real future diff on THOSE should still be visible, not silently
+  # ignored by an overly broad rule.
+  ignoreDifferences:
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+      name: alertmanagerconfigs.monitoring.coreos.com
+      jsonPointers:
+        - /metadata/labels
+        - /metadata/annotations
+        - /metadata/ownerReferences
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+      name: alertmanagers.monitoring.coreos.com
+      jsonPointers:
+        - /metadata/labels
+        - /metadata/annotations
+        - /metadata/ownerReferences
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+      name: podmonitors.monitoring.coreos.com
+      jsonPointers:
+        - /metadata/labels
+        - /metadata/annotations
+        - /metadata/ownerReferences
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+      name: prometheuses.monitoring.coreos.com
+      jsonPointers:
+        - /metadata/labels
+        - /metadata/annotations
+        - /metadata/ownerReferences
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+      name: prometheusrules.monitoring.coreos.com
+      jsonPointers:
+        - /metadata/labels
+        - /metadata/annotations
+        - /metadata/ownerReferences
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+      name: servicemonitors.monitoring.coreos.com
+      jsonPointers:
+        - /metadata/labels
+        - /metadata/annotations
+        - /metadata/ownerReferences
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+      name: thanosrulers.monitoring.coreos.com
+      jsonPointers:
+        - /metadata/labels
+        - /metadata/annotations
+        - /metadata/ownerReferences
