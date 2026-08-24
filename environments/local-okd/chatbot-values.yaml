@@ -9,7 +9,7 @@ n8n:
     # (2026-08-11T18:45:20Z) — includes the set -a/set +a Vault env-export
     # fix (chatbot-n8n PR #11). Confirmed pullable via `docker manifest
     # inspect` 2026-08-11.
-    tag: "sha-fe1a076"
+    tag: "sha-5584060"
   # No Route (see charts/chatbot/values.yaml) - only reachable inside the
   # cluster, via the frontend's reverse proxy.
   env:
