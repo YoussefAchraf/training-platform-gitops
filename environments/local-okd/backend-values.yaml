@@ -8,7 +8,7 @@ image:
   # fix) — confirmed pullable via `docker manifest inspect` 2026-08-12.
   # Never a floating `latest`, per CHANGES-PLAN.md's own conclusion that
   # risked pulling a pre-fix image.
-  tag: "sha-3cef611"
+  tag: "sha-07a3e87"
 
 # No Route (see charts/backend/values.yaml) - only reachable inside the
 # cluster, via the frontend's reverse proxy.
