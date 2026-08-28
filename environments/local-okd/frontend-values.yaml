@@ -10,7 +10,7 @@ image:
   # so pullPolicy: IfNotPresent triggers a real pull on its own — no more
   # manual rebuild-and-force-pull dance the previous fixed `local-okd`
   # tag needed.
-  tag: "sha-9a40fdd"
+  tag: "sha-ace38bc"
 
 route:
   host: "training-platform.apps-crc.testing"   # replace with your local OKD's real Route subdomain
