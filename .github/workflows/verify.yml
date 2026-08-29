@@ -226,8 +226,36 @@ jobs:
       # harmless. Revisit only if gosu's own actual behavior ever
       # changes (a new postgres major version, a different entrypoint
       # mechanism).
+      #
+      # `continue-on-error: true` on both steps below, deliberately -
+      # report-only, matching this same file's own k8s-sast/kube-linter
+      # and checkov (soft_fail: true) jobs, and the app repos' own
+      # semgrep/npm-audit jobs. Real, live-hit reason: unlike gosu's
+      # single narrow binary, openssl (libcrypto3/libssl3) is genuinely
+      # used by postgres for real TLS - a blanket skip-files on it would
+      # hide CVEs that could actually matter, so this needed the OTHER
+      # kind of fix. postgres/redis are official Docker Hub images this
+      # repo doesn't build (no Dockerfile here) and has zero ability to
+      # patch directly - a fresh CRITICAL/HIGH finding here means only
+      # "upstream hasn't republished yet," and until this changed, that
+      # blocked EVERY unrelated PR repo-wide for days at a time
+      # (training-platform-frontend PR #154/#159/#161 - three separate,
+      # completely unrelated app changes, all stuck on the exact same
+      # postgres:16-alpine OpenSSL CVE, none of which touched postgres
+      # at all) with branch protection's own "do not allow bypassing"
+      # meaning not even a repo admin could merge past it without
+      # weakening that setting by hand, every single time. Findings
+      # still surface in full in this job's own log either way -
+      # nothing is hidden, this only stops it from being a merge gate.
+      # Real, durable monitoring for this now lives in
+      # scheduled-base-image-scan.yml instead (still hard-fails, just on
+      # a schedule instead of blocking unrelated work) - see that file
+      # for the reasoning on why monitoring and merge-gating are
+      # deliberately no longer the same mechanism for content this repo
+      # doesn't control the patch cadence of.
       - name: Trivy — postgres:16-alpine
         uses: aquasecurity/trivy-action@v0.36.0
+        continue-on-error: true
         with:
           image-ref: postgres:16-alpine
           severity: CRITICAL,HIGH
@@ -237,6 +265,7 @@ jobs:
 
       - name: Trivy — redis:7-alpine
         uses: aquasecurity/trivy-action@v0.36.0
+        continue-on-error: true
         with:
           image-ref: redis:7-alpine
           severity: CRITICAL,HIGH
