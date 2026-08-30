@@ -8,7 +8,7 @@ metadata:
 spec:
   replicas: 1
   strategy:
-    type: Recreate   # single PVC (n8n_data), ReadWriteOnce — a rolling update would deadlock two pods fighting over the same volume
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: n8n
@@ -23,14 +23,6 @@ spec:
         vault.hashicorp.com/agent-set-security-context: "false"
         vault.hashicorp.com/role: {{ .Values.vault.role | quote }}
         vault.hashicorp.com/agent-inject-secret-env: {{ .Values.vault.secretPath | quote }}
-        # Values are single-quoted deliberately - see the matching comment
-        # in charts/backend/templates/deployment.yaml. Real live finding
-        # there: an unquoted value containing a space silently breaks
-        # whatever entrypoint sources this file (POSIX `VAR=val cmd` prefix-
-        # assignment semantics discard the assignment after running the
-        # rest of the line as a command). None of these four values
-        # currently contain a space, but quoting costs nothing and removes
-        # the failure mode entirely the next time any of them is rotated.
         vault.hashicorp.com/agent-inject-template-env: |
           {{`{{- with secret "`}}{{ .Values.vault.secretPath }}{{`" -}}`}}
           N8N_ENCRYPTION_KEY='{{`{{ .Data.data.n8n_encryption_key }}`}}'
@@ -40,22 +32,9 @@ spec:
           {{`{{- end -}}`}}
       {{- end }}
     spec:
-      # Real finding from an actual OKD deploy: Kubernetes' Docker-links
-      # compatibility feature (default-on) injects an env var per Service
-      # in the namespace, and since this Service is named "n8n" it injects
-      # N8N_PORT=tcp://<cluster-ip>:5678 into this pod — colliding with
-      # n8n's own N8N_PORT config var, which expects a bare port number
-      # ("Invalid number value for N8N_PORT: tcp://..."). Disabling service
-      # links is the standard fix for this well-known n8n-on-Kubernetes
-      # footgun.
       enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
-        # fsGroup deliberately unset — a hardcoded value (even one matching
-        # the image's own uid, 1000) gets rejected by OKD's restricted-v2
-        # SCC ("not an allowed group"); confirmed on an actual OKD deploy.
-        # Leaving it unset lets OKD auto-assign one from the namespace's
-        # allocated range, which still makes the PVC group-writable.
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -66,20 +45,10 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
-          # No command override — the image's own ENTRYPOINT
-          # (["sh","/entrypoint.sh"], baked in by training-platform-chatbot-n8n's
-          # Dockerfile) already does this, and entrypoint.sh/bootstrap.js/the
-          # 5 workflow JSONs are baked into the image itself, not bind-mounted.
           ports:
             - name: http
               containerPort: 5678
           env:
-            # Real finding from an actual OKD deploy: OKD runs this
-            # container as an arbitrary, non-passwd UID (restricted-v2
-            # SCC), so $HOME resolves to "/" instead of the image's node
-            # user's home — n8n then tries (and fails, EACCES) to create
-            # its settings dir at /.n8n instead of the mounted
-            # /home/node/.n8n. Same class of bug as backend's PM2_HOME fix.
             - name: HOME
               value: /home/node
             {{- range $key, $value := .Values.n8n.env }}
@@ -136,13 +105,4 @@ spec:
           persistentVolumeClaim:
             claimName: n8n-data
         - name: n8n-cache
-          # Real finding from an actual OKD deploy: /home/node/.cache is
-          # baked into the image owned by node:node (uid 1000), not
-          # group-0 writable, so it EACCES under OKD's arbitrary runtime
-          # UID. An emptyDir here is OKD-provisioned with the pod's own
-          # writable group, sidestepping the image's baked-in ownership -
-          # same trick Vault Agent Injector uses for its own sidecar's
-          # $HOME (visible as this same pod's home-init/home-sidecar
-          # volumes). Ephemeral by design: n8n's build cache doesn't need
-          # to survive a pod restart.
           emptyDir: {}

@@ -6,9 +6,6 @@ on:
       - dev
       - main
 
-permissions:
-  contents: read
-
 jobs:
   verify:
     uses: ./.github/workflows/verify.yml

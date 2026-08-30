@@ -1,9 +1,3 @@
-# n8n + its dedicated redis + metrics-exporter, deployed/rolled back
-# together as one logical unit. vault.enabled: true is the default in
-# environments/local-okd/chatbot-values.yaml — n8n's secrets are
-# Vault-delivered, no plain-Secret fallback in normal operation. sync-wave
-# 0 (default) runs after vault.yaml's wave -1. Still needs the one-time
-# manual step of creating n8n-role in Vault first (see docs/runbook.md).
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -29,9 +23,6 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=false
-  # Same kube-green-vs-selfHeal conflict as argocd/apps/backend.yaml -
-  # see that file's comment for the full explanation and the live
-  # evidence that motivated this.
   ignoreDifferences:
     - group: apps
       kind: Deployment

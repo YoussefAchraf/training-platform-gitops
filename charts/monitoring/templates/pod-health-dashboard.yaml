@@ -1,14 +1,3 @@
-# Custom dashboard, not one of kube-prometheus-stack's bundled defaults -
-# those are all resource-usage graphs (CPU/memory over time), none of them
-# is a simple "is this pod actually healthy right now" status view. This
-# recreates that view (phase, ready containers, restart count per pod -
-# effectively `oc get pods` as a Grafana table) from metrics kube-state-
-# metrics already scrapes but nothing surfaces by default.
-#
-# Picked up automatically by Grafana's dashboard sidecar - any ConfigMap
-# labeled grafana_dashboard: "1" in this namespace gets loaded, same
-# mechanism kube-prometheus-stack's own bundled dashboards use (see
-# charts/monitoring/values.yaml's sidecar.dashboards config).
 apiVersion: v1
 kind: ConfigMap
 metadata:

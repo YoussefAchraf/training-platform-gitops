@@ -1,33 +1,8 @@
 name: Scheduled base-image scan
 
-# The other half of making verify.yml's `sca` job non-blocking (see the
-# long comment on that job for the full incident history - three
-# separate, completely unrelated PRs stuck for days on the same
-# postgres:16-alpine OpenSSL CVE this repo has zero ability to patch
-# directly, since postgres/redis are official upstream images with no
-# Dockerfile of ours to fix). Blocking merges on a third-party vendor's
-# own patch cadence was the actual bug; removing that doesn't mean this
-# repo stops watching for real vulnerabilities - it means watching
-# happens on a schedule instead of as a gate on unrelated work.
-#
-# Deliberately still hard-fails (exit-code: 1, no continue-on-error) -
-# unlike verify.yml's copy of this same scan, there's no unrelated PR
-# to unblock here, so a real finding SHOULD show as a red run. A failed
-# scheduled run shows in the Actions tab and (GitHub's own default
-# behavior for repos you own) emails you - real, durable visibility
-# without needing a bespoke issue-filing integration this project's
-# solo-operator scale doesn't warrant.
-#
-# Weekly, matching this repo's existing codeql.yml cadence elsewhere in
-# this project. workflow_dispatch alongside it so this can be run
-# on-demand too - e.g., to check "has upstream shipped the fix yet"
-# without waiting for the next scheduled tick, or right after choosing
-# to temporarily weaken branch protection for an unrelated urgent merge,
-# to confirm going back to normal is safe again.
-
 on:
   schedule:
-    - cron: "0 3 * * 1" # weekly, Monday 03:00 UTC
+    - cron: "0 3 * * 1"
   workflow_dispatch: {}
 
 permissions:
@@ -38,11 +13,6 @@ jobs:
     name: scan
     runs-on: ubuntu-latest
     steps:
-      # skip-files here mirrors verify.yml's own sca job exactly, same
-      # reasoning (gosu's actual code paths never touch the vulnerable
-      # stdlib surface its static linking pulls in) - see that job's
-      # comment for the full explanation, not repeated here to avoid
-      # the two copies drifting out of sync in wording alone.
       - name: Trivy — postgres:16-alpine
         uses: aquasecurity/trivy-action@v0.36.0
         with:

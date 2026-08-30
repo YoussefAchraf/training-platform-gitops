@@ -20,23 +20,8 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       BRANCH: ${{ github.ref_name }}
-      # Passed via env, not interpolated straight into the run: block -
-      # `${{ }}` expressions are substituted as raw text into the
-      # generated shell script BEFORE bash ever parses it, so a commit
-      # message containing a double quote or backtick (both completely
-      # ordinary in prose) breaks the script - confirmed live, this job
-      # failed with a bash syntax error the first time a real commit
-      # message quoted a literal error string. Referencing $COMMIT_MSG
-      # instead lets the shell handle it as one safely-quoted value.
       COMMIT_MSG: ${{ github.event.head_commit.message }}
     steps:
-      # backend/frontend's own on-feature-push.yml also auto-merges once
-      # dev's checks pass, using a DEV_AUTOMERGE_TOKEN secret (a PAT — the
-      # default GITHUB_TOKEN can't trigger further workflow runs on the PR
-      # it creates). That secret isn't configured for this repo yet, so
-      # this deliberately only opens the PR and stops there — add
-      # DEV_AUTOMERGE_TOKEN and the `gh pr merge --auto` step from
-      # backend's on-feature-push.yml later if full parity is wanted.
       - name: Open (or reuse) a PR into dev
         run: |
           EXISTING=$(gh pr list --repo "${{ github.repository }}" --head "$BRANCH" --base dev --json number --jq 'length')

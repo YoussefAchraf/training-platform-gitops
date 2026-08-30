@@ -1,7 +1,3 @@
-# Build order (ARCHITECTURE-PLAN.md §9, step 6): last — additive
-# observability, not a dependency of anything else working. Check
-# `oc get storageclass` and local resource headroom before applying (§6) —
-# kube-prometheus-stack defaults are tuned for real clusters.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -22,80 +18,12 @@ spec:
     server: https://kubernetes.default.svc
     namespace: monitoring
   syncPolicy:
-    # Now automated like every other Application in this repo. Previously
-    # deliberately excluded because this is a genuinely heavy addition
-    # (kube-prometheus-stack - several CRDs, Deployments, a DaemonSet) on
-    # a single-node cluster that had already hit real CPU/disk pressure
-    # without monitoring even running, and because node-exporter's SCC
-    # requirement was only documented as a manual runbook step, not
-    # enforced by git - auto-deploying into that combination risked
-    # compounding an already-unstable cluster.
-    #
-    # Both root causes are now addressed in git, not just capacity:
-    # node-exporter's SCC grant is its own RoleBinding template
-    # (charts/monitoring/templates/node-exporter-scc-rolebinding.yaml),
-    # applied by ArgoCD like any other resource, and this environment's
-    # CRC allocation was raised from 4 to 6 CPUs specifically because the
-    # existing app tier alone was already at ~94% requested with no
-    # slack. Sync-wave 2 (last) still applies, so this only ever deploys
-    # after the rest of the stack is Healthy.
-    #
-    # One thing this can't automate: `grafana-admin-credentials` (the
-    # Secret Grafana's admin login reads) has to exist before this syncs,
-    # same one-time-bootstrap pattern already used for
-    # postgres/backend/chatbot's credentials before their own Vault
-    # integration - see environments/local-okd/monitoring-secrets.example.yaml
-    # and docs/runbook.md §6.
     automated:
       prune: true
       selfHeal: true
     syncOptions:
       - CreateNamespace=false
-      # kube-prometheus-stack's CRDs (Prometheus, Alertmanager, etc.) carry
-      # large OpenAPI schemas that exceed Kubernetes' 262144-byte
-      # last-applied-configuration annotation limit under client-side
-      # apply - the exact same failure class already solved for ArgoCD's
-      # own applicationsets CRD in bootstrap/01-argocd-install.yaml (see
-      # docs/runbook.md §1). Confirmed live: every CRD in this chart hit
-      # "metadata.annotations: Too long: may not be more than 262144
-      # bytes" on every sync attempt until this was added. Server-side
-      # apply computes the diff on the API server instead of storing a
-      # full-config annotation, so it isn't subject to this limit.
       - ServerSideApply=true
-  # These 7 CRDs are permanently OutOfSync, not transiently - confirmed live
-  # (`oc get crd prometheuses.monitoring.coreos.com -o json`, checked 4 of
-  # the 7 directly) that each one already carries an ownerReference to
-  # `ClusterVersion/version` plus OpenShift-specific labels
-  # (app.kubernetes.io/managed-by: cluster-version-operator,
-  # app.kubernetes.io/part-of: openshift-monitoring) and annotations
-  # (include.release.openshift.io/*) that this chart's own manifest never
-  # sets - these CRDs are part of OKD's own baseline release payload, not
-  # something this chart created from scratch. The chart's own version is
-  # the SAME upstream prometheus-operator release (operator.prometheus.io/
-  # version: 0.77.2 matches on both sides, confirmed) - only the top-level
-  # metadata differs, never the actual CRD spec/schema.
-  #
-  # Confirmed this is purely a diff-display mismatch, not a masked real
-  # difference, before adding this: a server-side dry-run apply
-  # (`oc apply --server-side --dry-run=server`) of the chart's own rendered
-  # prometheuses CRD against this live cluster succeeds cleanly with no
-  # conflict, and the OKD-owned fields are still present on the live object
-  # right now despite this Application's automated sync having already
-  # applied it repeatedly - server-side apply's field-ownership model
-  # already leaves other managers' fields alone in practice, ArgoCD's own
-  # diff view just doesn't reflect that the same way. Same reasoning as
-  # this repo's other ignoreDifferences entry (vault's webhook caBundle,
-  # argocd/apps/vault.yaml) - without this, this Application shows
-  # permanently OutOfSync for something that was never actually going to
-  # change on the next sync, making a real future problem harder to spot
-  # at a glance.
-  #
-  # Deliberately scoped to these 7 specific CRD names, not a blanket
-  # kind-wide rule - the chart defines 10 CRDs total; the other 3
-  # (probes, prometheusagents, scrapeconfigs) are newer CRD types this
-  # OKD baseline doesn't ship at all, so they have no such conflict and
-  # a real future diff on THOSE should still be visible, not silently
-  # ignored by an overly broad rule.
   ignoreDifferences:
     - group: apiextensions.k8s.io
       kind: CustomResourceDefinition

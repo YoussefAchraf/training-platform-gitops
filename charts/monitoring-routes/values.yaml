@@ -1,8 +1,3 @@
-# Empty by default so a fresh environment doesn't accidentally expose
-# these before its own *-values.yaml sets real hostnames; see
-# environments/local-okd/monitoring-routes-values.yaml. Same convention
-# this route.host / route.tlsTermination pair used before the split
-# (charts/frontend and charts/backend follow the identical pattern).
 route:
   host: ""
   prometheusHost: ""

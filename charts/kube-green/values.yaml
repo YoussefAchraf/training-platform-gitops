@@ -1,24 +1,4 @@
-# Values passed straight through to the upstream kube-green chart
-# (nested under `kube-green:` because that's the dependency's own name).
-#
-# Unlike vault/monitoring, this chart needed NO SecurityContext override
-# at all - confirmed by rendering the actual pinned chart version and
-# grepping the full output for runAsUser/runAsGroup/fsGroup: none exist
-# anywhere in it. The controller only sets allowPrivilegeEscalation:
-# false, dropped capabilities, runAsNonRoot: true, and
-# seccompProfile: RuntimeDefault - all already compatible with OKD's
-# restricted-v2 SCC, which assigns the actual UID itself.
 kube-green:
-  # This cluster has no cert-manager installed. Without switching to the
-  # chart's own Job-based cert generation, the SleepInfo admission
-  # webhook (failurePolicy: Fail) would have no TLS cert and reject
-  # every SleepInfo create/update outright. jobsCert uses
-  # kube-webhook-certgen - the exact same tool
-  # kube-prometheus-stack's own admission-webhook cert Job already uses
-  # in this repo (see charts/monitoring/values.yaml) - confirmed via the
-  # rendered manifest to carry no hardcoded UID either, so (unlike that
-  # chart's prometheusOperator.admissionWebhooks.patch.securityContext)
-  # no override is needed here to make it OKD-compatible.
   certManager:
     enabled: false
   jobsCert:

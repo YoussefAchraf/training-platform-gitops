@@ -1,75 +1,3 @@
-# Vendored, corrected copy of upstream ArgoCD's one-time cluster-install
-# manifest (originally https://raw.githubusercontent.com/argoproj/argo-cd/
-# stable/manifests/install.yaml, argocd v3.5.1 / chart-equivalent content
-# as of 2026-08-13). This is what bootstrap/00-namespace.yaml's chosen
-# chicken-and-egg method (see docs/runbook.md §1) actually applies -
-# fetching the upstream URL live is no longer recommended; see below.
-#
-# Real findings from an actual OKD deploy, applying the raw upstream file
-# unmodified: (1) argocd-redis and argocd-dex-server hardcode
-# `runAsUser: 999`/`1001` in their pod securityContext - OKD's
-# restricted-v2 SCC rejects both outright (same class of issue this
-# repo's own charts already work around everywhere else - see e.g.
-# charts/vault/values.yaml). (2) every Deployment/StatefulSet's pod
-# template labels only `app.kubernetes.io/name`, never
-# `app.kubernetes.io/instance` - but once bootstrap/01-argocd-install.yaml
-# hands these same objects to ArgoCD's own Helm-based self-management,
-# the chart's selector convention *requires* `instance` too, and
-# `spec.selector` on a Deployment/StatefulSet is immutable once created.
-# (3) five of the seven workloads' main container is named `argocd-X`
-# (e.g. `argocd-server`) in the raw manifest, but the Helm chart names
-# the same container just `X` (e.g. `server` - confirmed against the
-# chart's own values.yaml, one values key per component). Since
-# `containers` is a list keyed by name, once ArgoCD's Helm-based sync
-# successfully patches these objects (after fixes 1+2 stop blocking it
-# outright), the mismatched name makes it *add* a second container
-# instead of replacing the first - both then crash fighting over the
-# same port. redis and dex-server were not affected by (3): the raw
-# manifest already happens to name their containers `redis`/`dex-server`,
-# matching the chart's own values exactly. (4) repo-server's `copyutil`
-# init container ran a `sh -c "cp ... && ln -sf ..."` one-liner (command:
-# [sh, -c] + args: [the string]) in the raw manifest, but the chart's own
-# template for the identical container uses a plain `command: [/bin/cp,
-# -n, ...]` with no `args` at all. Since the chart's sync never mentions
-# `args`, it has no basis to know it should clear the raw manifest's
-# leftover `args` field - both `command` and the stale `args` persist
-# together, and Kubernetes runs them concatenated: the whole `args`
-# string gets appended as a literal extra argument to `cp`, which then
-# fails ("No such file or directory") because that giant string isn't a
-# real path. dex-server's own copyutil was checked against the chart
-# too and found already identical - no fix needed there.
-#
-# There is no patch that fixes any of these four after the fact for an
-# already-created object - (2), (3), and (4) all require the object to
-# never have been created wrong in the first place (immutable selector
-# for (2); stale list/field entries an unrelated sync can't know to
-# clear for (3) and (4)). The changes below (vs. the unmodified upstream
-# file): `app.kubernetes.io/instance: argocd` added to every workload's
-# selector + pod template labels, both hardcoded runAsUser values
-# removed, the five mismatched container names renamed to match the
-# Helm chart's values.yaml exactly, and repo-server's copyutil init
-# container rewritten to match the chart's plain-command form exactly
-# (no command+args split).
-#
-# redis's raw-manifest init container (`secret-init`, runs `argocd admin
-# redis-initial-password`) has NO chart-side equivalent at all - the
-# chart only adds redis init containers if `.Values.redis.initContainers`
-# is explicitly set, which nothing in this repo does. Left as-is
-# deliberately: unlike (1)-(4), an extra container Helm doesn't know
-# about gets pruned cleanly on sync (redis's initial password already
-# lives in the argocd-redis secret Helm also manages), not merged into
-# something broken - a fundamentally different, lower-risk situation
-# than the four fixed above. Re-verify this still holds if this file is
-# ever refreshed against a newer chart/upstream version.
-#
-# To refresh this file against a newer upstream release: fetch
-# https://raw.githubusercontent.com/argoproj/argo-cd/<tag>/manifests/
-# install.yaml, then re-apply all four fixes above before committing -
-# do not swap in the raw upstream file unmodified, that reintroduces all
-# four bugs. Re-verify container names against
-# https://github.com/argoproj/argo-helm/blob/argo-cd-<chart-version>/
-# charts/argo-cd/values.yaml (search each component's `name:` key) since
-# the chart's own naming could change between versions.
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
@@ -31570,9 +31498,7 @@ apiVersion: v1
 data:
   resource.customizations.ignoreResourceUpdates.ConfigMap: |
     jqPathExpressions:
-      # Ignore the cluster-autoscaler status
       - '.metadata.annotations."cluster-autoscaler.kubernetes.io/last-updated"'
-      # Ignore the annotation of the legacy Leases election
       - '.metadata.annotations."control-plane.alpha.kubernetes.io/leader"'
   resource.customizations.ignoreResourceUpdates.Endpoints: |
     jsonPointers:
@@ -31607,19 +31533,16 @@ data:
       - /endpoints
       - /ports
   resource.exclusions: |
-    ### Network resources created by the Kubernetes control plane and excluded to reduce the number of watched events and UI clutter
     - apiGroups:
       - ''
       - discovery.k8s.io
       kinds:
       - Endpoints
       - EndpointSlice
-    ### Internal Kubernetes resources excluded reduce the number of watched events
     - apiGroups:
       - coordination.k8s.io
       kinds:
       - Lease
-    ### Internal Kubernetes Authz/Authn resources excluded reduce the number of watched events
     - apiGroups:
       - authentication.k8s.io
       - authorization.k8s.io
@@ -31630,7 +31553,6 @@ data:
       - SelfSubjectAccessReview
       - SelfSubjectRulesReview
       - SubjectAccessReview
-    ### Intermediate Certificate Request excluded reduce the number of watched events
     - apiGroups:
       - certificates.k8s.io
       kinds:
@@ -31639,14 +31561,12 @@ data:
       - cert-manager.io
       kinds:
       - CertificateRequest
-    ### Cilium internal resources excluded reduce the number of watched events and UI Clutter
     - apiGroups:
       - cilium.io
       kinds:
       - CiliumIdentity
       - CiliumEndpoint
       - CiliumEndpointSlice
-    ### Kyverno intermediate and reporting resources excluded reduce the number of watched events and improve performance
     - apiGroups:
       - kyverno.io
       - reports.kyverno.io
@@ -31704,7 +31624,6 @@ metadata:
 apiVersion: v1
 data:
   ssh_known_hosts: |
-    # This file was automatically generated by hack/update-ssh-known-hosts.sh. DO NOT EDIT
     [ssh.github.com]:443 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=
     [ssh.github.com]:443 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
     [ssh.github.com]:443 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCj7ndNxQowgcQnjshcLrqPEiiphnt+VTTvDP6mHBL9j1aNUkY4Ue1gvwnGLVlOhGeYrnZaMgRK6+PKCUXaDbC7qtbW8gIkhL7aGCsOr/C56SJMy/BCZfxd1nWzAOxSDPgVsmerOBYfNqltV9/hWCqBywINIR+5dIg6JTJ72pcEpEjcYgXkE2YEFXV1JHnsKgbLWNlhScqb2UmyRkQyytRLtL+38TGxkxCflmO+5Z8CSSNY7GidjMIZ7Q4zMjA2n1nGrlTDkzwDCsw+wqFPGQA179cnfGWOWRVruj16z6XyvxvjJwbz0wQZ75XK5tKSb7FNyeIEs4TT4jk+S4dhPeAUC5y+bDYirYgM4GC7uEnztnZyaVWQ7B381AK4Qdrwt51ZqExKbQpTUNn+EjqoTwvqNj4kqx5QUCI0ThS/YkOxJCXmPUWZbhjpCg56i+2aB6CmK2JGhn57K5mj0MNdBXA4/WnwH6XoPWJzK5Nyu2zB3nAZp+S5hpQs+p1vN1/wsjk=

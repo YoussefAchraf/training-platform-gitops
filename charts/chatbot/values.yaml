@@ -1,20 +1,10 @@
 n8n:
   image:
-    # Self-contained image published by training-platform-chatbot-n8n's own
-    # docker-publish-n8n.yml (n8nio/n8n base + entrypoint.sh/bootstrap.js/the
-    # 5 workflow JSONs baked in via Dockerfile COPY) — not the bare upstream
-    # n8nio/n8n image anymore. No ConfigMap/bind-mount needed at deploy time.
     repository: ghcr.io/youssefachraf/training-platform-chatbot-n8n
-    tag: ""                # set in environments/local-okd/chatbot-values.yaml — pin a real tag/digest, never floating `latest`
+    tag: ""
     pullPolicy: IfNotPresent
   service:
     port: 5678
-  # No Route: n8n is reachable only inside the cluster, over its Service
-  # (n8n.<namespace>.svc.cluster.local:5678). The frontend's nginx
-  # reverse-proxies the one chatbot webhook path to it - see
-  # training-platform-frontend's docker/default.conf.template and
-  # ARCHITECTURE-PLAN.md §6. The n8n editor UI has no external access this
-  # way; for occasional admin access, use `oc port-forward svc/n8n 5678:5678`.
   resources:
     requests:
       cpu: 200m
@@ -25,19 +15,15 @@ n8n:
   persistence:
     size: 2Gi
     storageClassName: ""
-  # Non-secret env, matches training-platform-chatbot-n8n's .env.example.
   env:
     GENERIC_TIMEZONE: "Africa/Casablanca"
-    N8N_WEBHOOK_URL: ""                          # set per environment — this chart's own Route URL + trailing slash
-    N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"         # required: HTTP Tool nodes read $env.BACKEND_API_URL from inside sub-nodes
-    BACKEND_API_URL: "http://backend:4000"        # internal ClusterIP Service DNS, not a Route — pod-to-pod traffic stays in-cluster
-    MCP_SERVER_URL: ""                            # optional, leave empty unless the SuperAdmin extended-tools MCP server is running
+    N8N_WEBHOOK_URL: ""
+    N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+    BACKEND_API_URL: "http://backend:4000"
+    MCP_SERVER_URL: ""
     AI_BASE_URL: "https://api.openai.com/v1"
     AI_MODEL: "gpt-4o-mini"
-    N8N_OWNER_EMAIL: "admin@localhost.local"       # non-secret half of the owner login; N8N_OWNER_PASSWORD is a secret, see below
-    # n8n's own built-in Prometheus metrics — already enabled in the source
-    # repo's .env (verified; ARCHITECTURE-PLAN.md's original claim that
-    # these were off was stale). Served at GET /metrics on the n8n pod.
+    N8N_OWNER_EMAIL: "admin@localhost.local"
     N8N_METRICS: "true"
     N8N_METRICS_INCLUDE_WORKFLOW_ID_LABEL: "true"
     N8N_METRICS_INCLUDE_WORKFLOW_NAME_LABEL: "true"
@@ -53,7 +39,7 @@ redis:
     tag: "7-alpine"
     pullPolicy: IfNotPresent
   service:
-    name: chatbot-redis   # deliberately distinct name from backend's own redis Service — see ARCHITECTURE-PLAN.md §6, kept as two separate instances
+    name: chatbot-redis
     port: 6379
   resources:
     requests:
@@ -65,24 +51,16 @@ redis:
   persistence:
     size: 1Gi
     storageClassName: ""
-  # Same postgres:16-alpine-style arbitrary-UID risk applies to plain
-  # redis:7-alpine under restricted-v2. fsGroup deliberately unset — see
-  # charts/postgres/values.yaml for why a hardcoded value gets rejected
-  # (real finding from an actual OKD deploy, not theoretical).
   securityContext:
     runAsNonRoot: true
     seccompProfile:
       type: RuntimeDefault
 
 metricsExporter:
-  # Same values-flag toggle pattern as vault.enabled below — set to false
-  # to run n8n on its own with no metrics/cost-tracking sidecar service at
-  # all (its only consumer is Prometheus via the ServiceMonitor below,
-  # which is itself gated off until charts/monitoring exists).
   enabled: true
   image:
     repository: ghcr.io/youssefachraf/training-platform-chatbot-n8n-metrics-exporter
-    tag: ""                 # pin a real tag/digest in environments/local-okd/chatbot-values.yaml
+    tag: ""
     pullPolicy: IfNotPresent
   service:
     port: 9464
@@ -98,20 +76,13 @@ metricsExporter:
     EXPORTER_PORT: "9464"
     AI_PRICE_PROMPT_PER_1M_USD: "0.10"
     AI_PRICE_COMPLETION_PER_1M_USD: "0.40"
-  # Guarded behind charts/monitoring existing (build order step 6) — the
-  # ServiceMonitor CRD only exists once kube-prometheus-stack's operator is
-  # installed. Flip to true once charts/monitoring is applied.
   serviceMonitor:
     enabled: false
 
-# See "Design decision: Vault gets a values-flag toggle" — same pattern as
-# charts/backend. false: secrets come from secrets.existingSecretName.
 vault:
   enabled: false
   role: n8n-role
   secretPath: training-platform/data/n8n
 
 secrets:
-  # Keys expected inside this Secret: N8N_ENCRYPTION_KEY, N8N_OWNER_PASSWORD,
-  # AI_API_KEY, REDIS_PASSWORD.
   existingSecretName: chatbot-credentials

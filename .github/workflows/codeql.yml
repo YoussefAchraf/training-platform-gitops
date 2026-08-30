@@ -1,10 +1,5 @@
 name: CodeQL
 
-# Mirrors training-platform-backend/-frontend's own codeql.yml exactly —
-# same trigger shape, same matrix pattern (actions + javascript-typescript).
-# javascript-typescript here only ever analyzes scripts/*.js (see
-# .github/codeql/codeql-config.yml) since that's the only application code
-# in this repo.
 on:
   push:
     branches:
