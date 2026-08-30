@@ -17,7 +17,7 @@ metricsExporter:
   serviceMonitor:
     enabled: true
   image:
-    tag: "sha-93ca549"
+    tag: "sha-9f51c78"
 
 vault:
   enabled: true
