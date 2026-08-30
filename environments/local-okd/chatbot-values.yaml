@@ -1,6 +1,6 @@
 n8n:
   image:
-    tag: "sha-5584060"
+    tag: "sha-2f07232"
   env:
     N8N_WEBHOOK_URL: "https://training-platform.apps-crc.testing/"
     N8N_OWNER_EMAIL: "admin@localhost.local"
@@ -17,7 +17,7 @@ metricsExporter:
   serviceMonitor:
     enabled: true
   image:
-    tag: "sha-93ca549"
+    tag: "sha-9f51c78"
 
 vault:
   enabled: true
