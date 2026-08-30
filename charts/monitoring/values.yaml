@@ -1,25 +1,4 @@
-# Grafana/Prometheus Routes moved to their own chart+Application
-# (charts/monitoring-routes) - see that chart's Chart.yaml for why: this
-# Application's ServerSideApply=true (needed for kube-prometheus-stack's
-# oversized CRDs) made ArgoCD permanently fail to diff Route resources.
-
-# Values passed straight through to kube-prometheus-stack (nested under
-# `kube-prometheus-stack:`). Trimmed for a single-node local OKD install per
-# ARCHITECTURE-PLAN.md §6 — upstream defaults are tuned for real clusters
-# and will over-request on a modest local VM/CRC instance.
 kube-prometheus-stack:
-  # Real finding from an actual OKD deploy: prometheusOperator's admission-
-  # webhook cert-patch Job hardcodes runAsUser/runAsGroup: 2000 - same bug
-  # class as argocd-redis/backend elsewhere in this repo. Confirmed live
-  # (FailedCreate, "must be in the ranges: [1000680000, 1000689999]") after
-  # this Job sat silently stuck for 27 minutes with zero pods ever created,
-  # blocking the whole Application's sync. Unlike node-exporter's
-  # subchart-of-a-subchart securityContext (values.yaml's own comment on
-  # prometheus-node-exporter below - nulling doesn't propagate through
-  # that nesting), this Job's securityContext is a direct
-  # prometheusOperator.admissionWebhooks.patch key - same nesting depth as
-  # prometheus.prometheusSpec.resources above, which already overrides
-  # cleanly - so nulling it here is expected to actually take effect.
   prometheusOperator:
     admissionWebhooks:
       patch:
@@ -44,10 +23,6 @@ kube-prometheus-stack:
             resources:
               requests:
                 storage: 5Gi
-            # storageClassName intentionally unset — confirm with
-            # `oc get storageclass` and set the cluster's default/name in
-            # environments/local-okd/monitoring-values.yaml if it isn't the
-            # cluster default already.
 
   alertmanager:
     alertmanagerSpec:
@@ -72,43 +47,16 @@ kube-prometheus-stack:
     persistence:
       enabled: true
       size: 1Gi
-    # Real password comes from a Secret created out-of-band, same pattern
-    # as the app charts — see docs/secrets-inventory.md. Never a plaintext
-    # default here.
     admin:
       existingSecret: grafana-admin-credentials
       userKey: admin-user
       passwordKey: admin-password
-    # Dashboards-as-ConfigMap sideloading: any ConfigMap in the
-    # `monitoring` namespace labeled `grafana_dashboard: "1"` is picked up
-    # automatically — add training-platform-specific dashboards this way
-    # rather than editing this chart.
     sidecar:
       dashboards:
         enabled: true
         label: grafana_dashboard
         labelValue: "1"
 
-  # node-exporter runs as a DaemonSet needing host PID/network access —
-  # under OKD's default restricted-v2 SCC this will fail to schedule. The
-  # SCC grant itself is git-tracked (charts/monitoring/templates/
-  # node-exporter-scc-rolebinding.yaml), not a manual `oc adm policy`
-  # step, so this Application can auto-sync like every other one in this
-  # repo.
-  #
-  # The subchart's own default pod securityContext ALSO hardcodes
-  # fsGroup/runAsGroup/runAsUser to 65534 (the "nobody" UID) - same bug
-  # class already found and fixed for argocd-redis and backend elsewhere
-  # in this repo. Tried nulling those out here the same way, but verified
-  # locally (`helm template`, both via a values override and a direct
-  # `--set`) that it does NOT take effect through this chart's specific
-  # subchart structure - the default 65534 always survives the merge,
-  # for reasons not yet root-caused. Deliberately NOT shipping an
-  # unverified fix for a problem not yet confirmed to exist either: the
-  # `hostaccess` SCC this pod now gets (unlike restricted-v2) may permit
-  # a fixed UID outright. Left as-is; if the live sync shows a real SCC
-  # rejection, fix it then with the actual error in hand rather than
-  # guess further.
   prometheus-node-exporter:
     resources:
       requests:
@@ -127,11 +75,6 @@ kube-prometheus-stack:
         cpu: 100m
         memory: 128Mi
 
-  # OKD ships its own API server metrics/monitoring stack already scraping
-  # cluster-level targets in some configurations — these upstream
-  # component scrapers target vanilla-k8s control-plane endpoints that
-  # don't exist the same way on OKD and just generate noisy failed-scrape
-  # alerts. Disabled rather than fought.
   kubeControllerManager:
     enabled: false
   kubeScheduler:

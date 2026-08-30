@@ -1,10 +1,5 @@
 name: Verify
 
-# workflow_call composition, mirroring backend/frontend's own verify.yml
-# structure. See ARCHITECTURE-PLAN.md §7 for how each job maps onto the
-# app repos' own lint/typecheck/sca/sast/secret-scan pattern for a repo
-# that's Helm charts + K8s YAML instead of application source.
-
 on:
   workflow_call:
 
@@ -23,13 +18,6 @@ jobs:
           version: v3.16.4
 
       - name: helm dependency update (every wrapper chart)
-        # Loops rather than hardcoding chart names one at a time - a
-        # missed name here is exactly what broke this job the last time
-        # a new wrapper chart (kube-green) was added: `helm template`/
-        # `helm lint` fail with "found in Chart.yaml, but missing in
-        # charts/ directory" on a fresh CI checkout, since the
-        # dependency archive itself is gitignored, not vendored (see
-        # charts/vault/Chart.yaml's own comment on why).
         run: |
           set -e
           for c in charts/*/; do
@@ -39,13 +27,6 @@ jobs:
           done
 
       - name: helm lint (every chart)
-        # Skips directories with no Chart.yaml - not every charts/*/
-        # entry is a Helm chart. charts/kube-green-sleepinfo is a plain
-        # manifest directory on purpose (see its own header comment for
-        # why: giving it a Chart.yaml so it "counts" as a chart here
-        # would break the ArgoCD Application that deploys it, which
-        # uses an explicit directory: source, not helm:, and would try
-        # to apply Chart.yaml itself as a raw K8s manifest).
         run: |
           set -e
           for c in charts/*/; do
@@ -108,13 +89,6 @@ jobs:
           version: v3.16.4
 
       - name: helm dependency update (every wrapper chart)
-        # Loops rather than hardcoding chart names one at a time - a
-        # missed name here is exactly what broke this job the last time
-        # a new wrapper chart (kube-green) was added: `helm template`/
-        # `helm lint` fail with "found in Chart.yaml, but missing in
-        # charts/ directory" on a fresh CI checkout, since the
-        # dependency archive itself is gitignored, not vendored (see
-        # charts/vault/Chart.yaml's own comment on why).
         run: |
           set -e
           for c in charts/*/; do
@@ -124,11 +98,6 @@ jobs:
           done
 
       - name: Render every chart to a single manifest set
-        # charts/*/ entries with no Chart.yaml are plain manifest
-        # directories (see charts/kube-green-sleepinfo), not Helm
-        # charts - copied straight through instead of `helm template`,
-        # which would fail on them, so kube-linter below still covers
-        # their content.
         run: |
           set -e
           mkdir -p /tmp/rendered
@@ -147,11 +116,6 @@ jobs:
           done
 
       - name: kube-linter
-        # Report-only for now (like the app repos' own semgrep/checkov
-        # steps) — this is a first CI run for this repo's rendered
-        # manifests, unverified until it's actually seen findings.
-        # policy/security.rego (the `policy` job) is the hard-fail gate;
-        # this is a broader, noisier cross-check on top of it.
         continue-on-error: true
         uses: stackrox/kube-linter-action@v1.0.7
         with:
@@ -162,7 +126,7 @@ jobs:
         with:
           directory: /tmp/rendered
           framework: kubernetes
-          soft_fail: true # report-only for now, same convention as the app repos' own SAST job
+          soft_fail: true
 
   policy:
     name: policy
@@ -196,63 +160,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Scoped to the upstream images THIS repo alone chooses to deploy
-      # (postgres:16-alpine, redis:7-alpine — pinned in charts/postgres and
-      # charts/backend|chatbot's values.yaml). The backend/frontend/chatbot
-      # app images are already Trivy-scanned in their own source repos'
-      # docker-build-and-scan.yml / docker-publish*.yml before being
-      # published — re-scanning them here would just duplicate that gate,
-      # and this repo can't resolve their placeholder tags anyway (see
-      # environments/local-okd/*-values.yaml's REPLACE_WITH_* comments).
-      # skip-files excludes /usr/local/bin/gosu specifically, not a
-      # blanket ignore. Real finding, hit live and escalated (2 CVEs on
-      # first run, 7 by the next PR - Trivy's DB keeps finding new
-      # issues in the same underlying vulnerable Go stdlib version
-      # gosu is statically compiled against): a per-CVE-ID
-      # `.trivyignore` would need updating every time a new CVE number
-      # shows up in the same component, which isn't "fixed", it's
-      # "temporarily quiet". Excluding the file itself is durable
-      # because the reason it's safe doesn't depend on which CVE:
-      # gosu's entire job (per its own docs) is dropping root privilege
-      # and exec'ing the given command once at container startup - it
-      # never parses network input, DNS, Punycode, HTML, XML, or URLs,
-      # which is exactly the class of code path every CVE found here so
-      # far is actually in (net/http, x/net/idna, html/template,
-      # encoding/xml, net/url, crypto/tls). Those code paths exist in
-      # the binary only because Go statically links the whole stdlib
-      # in, not because gosu ever executes them. If postgres's official
-      # image ever ships a patched gosu, this line becomes a no-op, not
-      # a problem - skip-files on a file Trivy finds nothing in is
-      # harmless. Revisit only if gosu's own actual behavior ever
-      # changes (a new postgres major version, a different entrypoint
-      # mechanism).
-      #
-      # `continue-on-error: true` on both steps below, deliberately -
-      # report-only, matching this same file's own k8s-sast/kube-linter
-      # and checkov (soft_fail: true) jobs, and the app repos' own
-      # semgrep/npm-audit jobs. Real, live-hit reason: unlike gosu's
-      # single narrow binary, openssl (libcrypto3/libssl3) is genuinely
-      # used by postgres for real TLS - a blanket skip-files on it would
-      # hide CVEs that could actually matter, so this needed the OTHER
-      # kind of fix. postgres/redis are official Docker Hub images this
-      # repo doesn't build (no Dockerfile here) and has zero ability to
-      # patch directly - a fresh CRITICAL/HIGH finding here means only
-      # "upstream hasn't republished yet," and until this changed, that
-      # blocked EVERY unrelated PR repo-wide for days at a time
-      # (training-platform-frontend PR #154/#159/#161 - three separate,
-      # completely unrelated app changes, all stuck on the exact same
-      # postgres:16-alpine OpenSSL CVE, none of which touched postgres
-      # at all) with branch protection's own "do not allow bypassing"
-      # meaning not even a repo admin could merge past it without
-      # weakening that setting by hand, every single time. Findings
-      # still surface in full in this job's own log either way -
-      # nothing is hidden, this only stops it from being a merge gate.
-      # Real, durable monitoring for this now lives in
-      # scheduled-base-image-scan.yml instead (still hard-fails, just on
-      # a schedule instead of blocking unrelated work) - see that file
-      # for the reasoning on why monitoring and merge-gating are
-      # deliberately no longer the same mechanism for content this repo
-      # doesn't control the patch cadence of.
       - name: Trivy — postgres:16-alpine
         uses: aquasecurity/trivy-action@v0.36.0
         continue-on-error: true

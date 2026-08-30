@@ -1,16 +1,3 @@
-# Separate Application from kube-green.yaml on purpose - see
-# charts/kube-green-sleepinfo/sleepinfo.yaml's header for the deadlock
-# this avoids (a SleepInfo CR applied in the SAME sync as the kube-green
-# controller can never succeed until the controller's post-sync
-# cert-patch hook runs, but that hook never runs until every resource in
-# that same sync - including the SleepInfo - already succeeded).
-#
-# sync-wave "1" (kube-green.yaml has no annotation, i.e. default wave
-# "0") makes root-app apply and wait for kube-green's own Application to
-# be Healthy - meaning its own sync, hooks included, already completed -
-# before this Application is even attempted. By then the webhook has a
-# real, trusted certificate and this SleepInfo create succeeds on the
-# first real try instead of racing it.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

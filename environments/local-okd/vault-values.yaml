@@ -1,6 +1,3 @@
-# Empty storage class = cluster default, same pattern as
-# postgres-values.yaml's persistence.storageClassName. Confirm with
-# `oc get storageclass` if this cluster's default ever changes.
 vault:
   server:
     dataStorage:

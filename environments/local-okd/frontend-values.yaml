@@ -1,24 +1,9 @@
 image:
-  # Auto-bumped now (2026-08-18): training-platform-frontend's own CI
-  # opens a PR here with a fresh sha-<commit> tag on every merge to its
-  # main, same automation backend/chatbot already had — see
-  # .github/workflows/docker-build-and-scan.yml in that repo. This became
-  # possible once VITE_API_URL/VITE_CHATBOT_WEBHOOK_URL turned into
-  # same-origin relative paths (no more environment-specific hostnames
-  # baked into the image), and VITE_VAPID_PUBLIC_KEY moved to a repo
-  # variable CI bakes in itself. Each bump is a genuinely new tag string,
-  # so pullPolicy: IfNotPresent triggers a real pull on its own — no more
-  # manual rebuild-and-force-pull dance the previous fixed `local-okd`
-  # tag needed.
-  tag: "sha-509cd0c"
+  tag: "sha-92bc5b6"
 
 route:
-  host: "training-platform.apps-crc.testing"   # replace with your local OKD's real Route subdomain
+  host: "training-platform.apps-crc.testing"
 
 env:
-  # Internal Service DNS - nginx reverse-proxies here (see
-  # training-platform-frontend's docker/default.conf.template). Neither
-  # backend nor n8n has a Route anymore (see backend-values.yaml,
-  # chatbot-values.yaml) - the browser never talks to them directly.
   BACKEND_UPSTREAM: "http://backend.training-platform.svc.cluster.local:4000"
   CHATBOT_UPSTREAM: "http://n8n.training-platform.svc.cluster.local:5678"

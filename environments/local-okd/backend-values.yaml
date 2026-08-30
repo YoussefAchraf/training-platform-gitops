@@ -1,34 +1,9 @@
-# Non-secret overrides for this environment only. All secrets are
-# delivered by Vault (vault.enabled: true below) — see
-# docs/secrets-inventory.md and docs/runbook.md. backend-secrets.example.yaml
-# still exists as a bootstrap/disaster-recovery fallback only (e.g. if
-# Vault itself is ever down) — not the normal path.
 image:
-  # sha-8686d5d = main@8686d5d (PR #75/#77, CSRF cross-subdomain cookie
-  # fix) — confirmed pullable via `docker manifest inspect` 2026-08-12.
-  # Never a floating `latest`, per CHANGES-PLAN.md's own conclusion that
-  # risked pulling a pre-fix image.
-  tag: "sha-6abc894"
-
-# No Route (see charts/backend/values.yaml) - only reachable inside the
-# cluster, via the frontend's reverse proxy.
+  tag: "sha-402f600"
 
 env:
-  CLIENT_URL: "https://training-platform.apps-crc.testing"   # the frontend's Route host
-  # Not secret by design (VAPID key pairs are meant to have a public half) —
-  # copied straight from the real local .env pair currently in use, so push
-  # notifications keep working against the same pair rather than silently
-  # breaking on a mismatched key. Regenerate both together with
-  # `npx web-push generate-vapid-keys` if this pair is ever rotated — must
-  # stay identical to frontend-values.yaml's VITE_VAPID_PUBLIC_KEY.
+  CLIENT_URL: "https://training-platform.apps-crc.testing"
   VAPID_PUBLIC_KEY: "BNS64Kb9w84XhbJsqcwhqOt0djB-cwlZNXKNdgPmAlpcraWkSMfsNgkTzkyuBbA7L5Hq4C52Jcm9yWV8fLOhu58"
-  # COOKIE_DOMAIN intentionally unset now: it existed only because frontend
-  # and backend used to live on different subdomains (training-platform-
-  # backend PR #75's "Invalid CSRF token" fix). Now that the browser only
-  # ever calls the frontend's origin — which reverse-proxies to backend
-  # internally — cookies default to that single origin correctly with no
-  # explicit Domain needed, and an explicit one would only widen their
-  # scope for no reason.
 
 vault:
-  enabled: true   # Vault (charts/vault) must be deployed and backend-role configured BEFORE this app syncs — see docs/runbook.md, Vault now comes before backend in the build order
+  enabled: true

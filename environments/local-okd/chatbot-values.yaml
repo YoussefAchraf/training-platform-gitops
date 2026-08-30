@@ -1,55 +1,23 @@
-# Non-secret overrides for this environment only. All secrets are
-# delivered by Vault (vault.enabled: true below) — see
-# docs/secrets-inventory.md and docs/runbook.md. chatbot-secrets.example.yaml
-# still exists as a bootstrap/disaster-recovery fallback only — not the
-# normal path.
 n8n:
   image:
-    # sha-5439b44 = last successful docker-publish-n8n.yml run
-    # (2026-08-11T18:45:20Z) — includes the set -a/set +a Vault env-export
-    # fix (chatbot-n8n PR #11). Confirmed pullable via `docker manifest
-    # inspect` 2026-08-11.
     tag: "sha-5584060"
-  # No Route (see charts/chatbot/values.yaml) - only reachable inside the
-  # cluster, via the frontend's reverse proxy.
   env:
-    # n8n's own view of its externally-reachable base URL. Now that n8n has
-    # no Route of its own, the only real external path to the webhook is
-    # through the frontend's proxy - this must match frontend's route.host
-    # in frontend-values.yaml, trailing slash required (was previously kept
-    # in sync with n8n.route.host above instead, before it existed).
     N8N_WEBHOOK_URL: "https://training-platform.apps-crc.testing/"
-    N8N_OWNER_EMAIL: "admin@localhost.local"          # change before exposing this instance beyond your own machine
-    # Not secret (just an endpoint URL) — the actual key is Vault-delivered
-    # (n8n_ai_api_key). Real finding: bootstrap.js defaults AI_BASE_URL to
-    # real OpenAI's endpoint when unset, so a KodeKloud/other proxy API key
-    # gets silently rejected by OpenAI itself with a generic "Incorrect API
-    # key" 401 — this was never wired through to the cluster before, only
-    # ever set in the local .env used by docker-compose.
+    N8N_OWNER_EMAIL: "admin@localhost.local"
     AI_BASE_URL: "https://api.ai.kodekloud.com/v1"
   persistence:
-    storageClassName: ""   # set after `oc get storageclass`
+    storageClassName: ""
 
 redis:
   persistence:
     storageClassName: ""
 
 metricsExporter:
-  # Enabled: charts/monitoring (kube-prometheus-stack) is live now, so the
-  # earlier blocker ("its only consumer isn't deployed here") no longer
-  # applies. serviceMonitor.enabled below turns on the actual Prometheus
-  # scrape config - the chart's own default leaves that one off until this
-  # environment explicitly says monitoring exists. See
-  # charts/monitoring/templates/chatbot-metrics-dashboard.yaml for the
-  # Grafana side of this.
   enabled: true
   serviceMonitor:
     enabled: true
   image:
-    # sha-5439b44 = last successful docker-publish.yml run
-    # (2026-08-11T18:45:20Z) — includes the set -a/set +a Vault env-export
-    # fix (chatbot-n8n PR #11). Confirmed pullable 2026-08-11.
     tag: "sha-93ca549"
 
 vault:
-  enabled: true   # Vault (charts/vault) must be deployed and n8n-role configured BEFORE this app syncs — see docs/runbook.md, Vault now comes before chatbot in the build order
+  enabled: true
