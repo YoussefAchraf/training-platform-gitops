@@ -1,52 +1,4 @@
 #!/usr/bin/env node
-// Gets real secret values into Vault WITHOUT ever writing them to a file —
-// no encrypted file committed to this repo, no plaintext file on disk
-// either. Replaces the old scripts/vault-seed.js, which decrypted a
-// SOPS+age file (environments/local-okd/app-secrets.sops.env) committed in
-// git. That file is gone now, on purpose: a secrets file living in git
-// history forever is exactly the risk real companies design around, not
-// how big of a lock it has. See docs/secrets-inventory.md for the reasoning
-// and the full field-by-field table this script implements.
-//
-// Every value this script handles falls into one of three buckets:
-//
-//   A) freely regenerate — nothing else depends on a specific value
-//      (jwt_secret). Auto-generated the moment it's missing, no questions
-//      asked.
-//   B) init-once, pinned-after — safe to freely (re)generate ONLY if the
-//      external system consuming it is ALSO being freshly initialized
-//      right now (postgres_password, both redis passwords,
-//      n8n_encryption_key, n8n_owner_password). Generating one of these on
-//      an already-initialized system silently desyncs Vault's copy from
-//      what's actually enforced elsewhere — this repo already hit exactly
-//      that bug once (backend and postgres independently getting different
-//      postgres_password values). Gated behind one combined y/N prompt.
-//   C) external, human-supplied — real third-party credentials nothing on
-//      this machine can invent (smtp_user, smtp_password, n8n_ai_api_key).
-//      Always a masked, typed-in prompt. vapid_private_key is the same
-//      mechanism but never auto-generated even on a fresh install — its
-//      public half is already baked into a deployed frontend image and
-//      backend-values.yaml, so a NEW keypair would break every existing
-//      browser push subscription.
-//
-// Nothing typed in ever touches disk: prompted values live only in this
-// process's memory and go straight to Vault's HTTP API. Nothing already
-// present in Vault is ever touched — this script only ever fills in
-// missing keys, so it's safe to re-run against an already-seeded Vault
-// (confirm with `vault kv metadata get` before/after — current_version
-// should be unchanged if nothing was actually missing).
-//
-// Usage (from this repo's root, port-forwarded to the in-cluster Vault,
-// e.g. `oc port-forward -n vault svc/vault 8200:8200`):
-//
-//   VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=<root token> node scripts/vault-bootstrap-secrets.js
-//
-// Get VAULT_TOKEN from: oc get secret vault-init-keys -n vault -o jsonpath='{.data.root_token}' | base64 -d
-//
-// Talks to Vault's KV-v2 HTTP API directly (Node's built-in fetch, 18+) and
-// uses only Node's own `crypto`/`readline` — zero runtime dependencies,
-// same constraint scripts/package.json already states.
-
 'use strict';
 const crypto = require('crypto');
 const readline = require('readline');
@@ -58,9 +10,6 @@ for (const v of ['VAULT_ADDR', 'VAULT_TOKEN']) {
   }
 }
 
-// Field classification per Vault path. 'linked' (postgres_password) is
-// handled separately in main() since it's shared, byte-for-byte, across
-// two paths — see docs/secrets-inventory.md on why that's deliberate.
 const FIELD_SPECS = {
   backend: {
     vaultPath: 'training-platform/backend',
@@ -88,8 +37,6 @@ const FIELD_SPECS = {
   },
 };
 
-// KV-v2's real API path always has "data/" between the mount and the
-// subpath — same split logic the old vault-seed.js used.
 function splitMount(mountRelativePath) {
   const slash = mountRelativePath.indexOf('/');
   return [mountRelativePath.slice(0, slash), mountRelativePath.slice(slash + 1)];
@@ -105,8 +52,6 @@ async function vaultKvGet(mountRelativePath) {
     throw new Error(`Vault API ${res.status} ${res.statusText} reading ${mount}/data/${subpath}: ${body}`);
   }
   const body = await res.json();
-  // A soft-deleted-but-not-destroyed KV-v2 version has data: null - treat
-  // exactly like "nothing here yet", same as a genuine 404.
   return (body.data && body.data.data) || {};
 }
 
@@ -124,14 +69,6 @@ async function vaultKvPut(mountRelativePath, data) {
   }
 }
 
-// base64url, not plain base64: these values get interpolated RAW into
-// DATABASE_URL/REDIS_URL connection strings and into single-quoted
-// shell-rendered env by the Vault Agent templates in charts/backend,
-// charts/postgres, charts/chatbot. Plain base64's alphabet includes `+`,
-// `/`, and `=` padding, any of which could corrupt a connection-string URL
-// or break out of a single-quoted shell value. base64url's alphabet
-// (A-Za-z0-9-_, no padding) has none of those characters, so it's safe in
-// both contexts by construction.
 function generate() {
   return crypto.randomBytes(32).toString('base64url');
 }
@@ -150,12 +87,6 @@ function confirm(question) {
   });
 }
 
-// Standard dependency-free Node trick for masked input: the prompt text
-// itself is written synchronously by rl.question() before `muted` flips to
-// true, so only the characters the user types afterward get starred out.
-// Falls back to plain (visible) input when stdin isn't a TTY - e.g. piped
-// input in a test harness - since there's nothing to mask in that case and
-// masking would just corrupt the read.
 function promptSecret(label) {
   return new Promise((resolve) => {
     const query = `  ${label}: `;
@@ -175,10 +106,6 @@ async function main() {
     n8n: await vaultKvGet(FIELD_SPECS.n8n.vaultPath),
   };
 
-  // Resolve the linked postgres_password first, across both its paths,
-  // with a hard-fail drift check - this is what makes the exact incident
-  // this repo already hit once (backend and postgres independently having
-  // DIFFERENT postgres_password values) detectable instead of reproducible.
   const pgFromBackend = current.backend.postgres_password;
   const pgFromPostgres = current.postgres.postgres_password;
   if (pgFromBackend && pgFromPostgres && pgFromBackend !== pgFromPostgres) {
@@ -189,16 +116,12 @@ async function main() {
   }
   const postgresPasswordMissing = !pgFromBackend && !pgFromPostgres;
 
-  // Collect every Bucket-B field that's missing, across all paths, plus
-  // postgres_password itself if missing - one combined confirmation covers
-  // all of them, since they share the same "is this a fresh install"
-  // question.
   const bucketBMissing = [];
   if (postgresPasswordMissing) bucketBMissing.push('postgres_password (shared by backend + postgres)');
   for (const [pathKey, spec] of Object.entries(FIELD_SPECS)) {
     for (const [field, kind] of Object.entries(spec.fields)) {
       if (field === 'postgres_password') continue;
-      if (current[pathKey][field]) continue; // already set - never touched
+      if (current[pathKey][field]) continue;
       if (kind === 'generated-pinned') bucketBMissing.push(`${field} (${pathKey})`);
     }
   }

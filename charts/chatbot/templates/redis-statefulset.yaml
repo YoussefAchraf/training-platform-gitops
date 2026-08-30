@@ -1,5 +1,3 @@
-# Dedicated to the chatbot (rate-limit + FAQ-cache) — deliberately NOT
-# shared with the backend's own redis. See ARCHITECTURE-PLAN.md §6.
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -33,12 +31,6 @@ spec:
             - redis-server
             - "--requirepass"
             - "$(REDIS_PASSWORD)"
-          # Always sourced from the plain Secret, even once vault.enabled is
-          # true for n8n/backend — ARCHITECTURE-PLAN.md §5 only defines Vault
-          # roles for the *consumers* (backend-role, n8n-role), not a
-          # redis-role for the datastore itself starting up. Simplest correct
-          # option: redis keeps reading its own --requirepass value from
-          # here; n8n/backend get theirs from Vault once migrated.
           env:
             - name: REDIS_PASSWORD
               valueFrom:

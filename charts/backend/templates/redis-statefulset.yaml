@@ -1,7 +1,3 @@
-# Backend's own dedicated redis (refresh tokens + rate limiting) —
-# deliberately separate from the chatbot's redis (charts/chatbot). See
-# ARCHITECTURE-PLAN.md §6 pod table: "redis (backend's)" and
-# "redis (chatbot's)" are two distinct pods/Services on purpose.
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -38,8 +34,6 @@ spec:
             - "--appendonly"
             - "yes"
           env:
-            # The REDIS_PASSWORD embedded inside backend's own REDIS_URL
-            # secret value must match this — see backend-secrets.example.yaml.
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:

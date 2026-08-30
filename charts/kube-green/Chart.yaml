@@ -1,8 +1,3 @@
-# Thin wrapper: just a values.yaml for the upstream kube-green chart,
-# pinned as a dependency — not a hand-rolled reimplementation, same
-# pattern as charts/vault and charts/monitoring. Run
-# `helm dependency update charts/kube-green` before first use (the
-# dependency archive is gitignored, not vendored).
 apiVersion: v2
 name: kube-green
 description: Wrapper chart pulling in upstream kube-green, plus a SleepInfo CR that sleeps training-platform overnight/weekends

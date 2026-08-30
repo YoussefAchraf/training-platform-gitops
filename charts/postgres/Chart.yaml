@@ -5,8 +5,8 @@ description: >-
   backend. Not the upstream Bitnami/CloudNativePG chart on purpose — this
   workload is a single instance with no HA/replication requirement at this
   scale, so a first-party StatefulSet keeps the arbitrary-UID/fsGroup fix
-  (ARCHITECTURE-PLAN.md §4) simple and explicit rather than fighting an
-  upstream chart's own security-context assumptions.
+  simple and explicit rather than fighting an upstream chart's own
+  security-context assumptions.
 type: application
 version: 0.1.0
 appVersion: "16-alpine"

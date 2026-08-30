@@ -1,14 +1,3 @@
-# Token usage, estimated cost, and reliability for the chatbot's 4 role
-# sub-workflows - sourced from training-platform-chatbot-n8n's own
-# metrics-exporter (see charts/chatbot/templates/metrics-exporter-*.yaml),
-# which polls n8n's execution history and exposes chatbot_* metrics that
-# n8n's own built-in Prometheus metrics don't cover (token/cost data lives
-# inside each execution's raw data, not in any metric n8n exposes itself).
-#
-# Picked up automatically by Grafana's dashboard sidecar - any ConfigMap
-# labeled grafana_dashboard: "1" in this namespace gets loaded, same
-# mechanism as pod-health-dashboard.yaml (see that file's own comment for
-# why this has to live in this chart/namespace, not charts/chatbot).
 apiVersion: v1
 kind: ConfigMap
 metadata:

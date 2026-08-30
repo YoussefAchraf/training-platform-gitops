@@ -1,8 +1,2 @@
-# Extends gitleaks' built-in default ruleset - do NOT remove [extend]:
-# a custom .gitleaks.toml with no [extend] table replaces the defaults
-# entirely instead of adding to them, which would silently disable every
-# built-in detection rule repo-wide, not just narrow one file out of one
-# rule (confirmed against gitleaks' own README "Configuration" section -
-# behavior since v8.25.0).
 [extend]
 useDefault = true

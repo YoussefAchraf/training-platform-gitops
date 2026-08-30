@@ -8,19 +8,10 @@ replicaCount: 1
 service:
   port: 5432
 
-# postgres:16-alpine writes its data directory as a hardcoded UID and will
-# crash-loop under OKD's restricted-v2 SCC without fsGroup making the
-# mounted volume group-writable. Real finding from an actual OKD deploy:
-# fsGroup must be LEFT UNSET, not hardcoded — restricted-v2 validates it
-# against the namespace's allocated supplemental-groups range (e.g.
-# 1000650000-1000659999, `oc get namespace <ns> -o yaml` shows the exact
-# range), same as runAsUser. A hardcoded value like 999 is rejected
-# ("999 is not an allowed group") exactly like a hardcoded runAsUser is —
-# leaving it unset lets OKD auto-assign a valid one, same mechanism.
 securityContext:
   runAsNonRoot: true
   seccompProfile:
-    type: RuntimeDefault   # required by the Restricted Pod Security Standard (and OKD's restricted-v2 SCC) — without this, kube-apiserver silently rejects the pod under enforce mode; confirmed via a live kind-cluster deploy under PSA "restricted" (dast.yml)
+    type: RuntimeDefault
 containerSecurityContext:
   allowPrivilegeEscalation: false
   capabilities:
@@ -36,26 +27,13 @@ resources:
 
 persistence:
   size: 5Gi
-  storageClassName: ""   # set in environments/local-okd/postgres-values.yaml once `oc get storageclass` is confirmed
+  storageClassName: ""
 
-# Non-secret. POSTGRES_PASSWORD is injected via the Secret named below —
-# never a plaintext value.env: {} — see docs/secrets-inventory.md.
 postgresDb: training_platform
 postgresUser: postgres
 
-# Name of the Secret (used when vault.enabled is false) holding key
-# `postgres-password`.
 existingSecret: postgres-credentials
 
-# See "Design decision: Vault gets a values-flag toggle" - same pattern as
-# charts/backend and charts/chatbot. Real finding, same night backend's own
-# Vault-vs-plain-Secret mismatch cost hours of debugging: postgres and
-# backend each had their OWN independently-set password that had to be
-# manually kept identical - the exact bug class this closes. When true,
-# postgres reads its own password from the same Vault path
-# scripts/vault-bootstrap-secrets.js already keeps in sync with backend's
-# own copy (see docs/secrets-inventory.md), so there is structurally only
-# one password, not two that must happen to match.
 vault:
   enabled: false
   role: postgres-role

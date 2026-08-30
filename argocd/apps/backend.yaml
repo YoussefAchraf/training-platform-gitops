@@ -1,10 +1,3 @@
-# vault.enabled: true is the default in environments/local-okd/backend-values.yaml
-# — ALL of backend's secrets are Vault-delivered, no plain-Secret fallback
-# in normal operation. sync-wave 0 (default) runs after vault.yaml's wave
-# -1, so ArgoCD won't even attempt this until Vault is Healthy. Still
-# needs the one-time manual step of creating backend-role in Vault first
-# (see docs/runbook.md) — ArgoCD doesn't configure Vault's own auth
-# method/roles for you.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -30,17 +23,6 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=false
-  # kube-green (argocd/apps/kube-green-sleepinfo.yaml) sleeps
-  # training-platform overnight/weekends by scaling replicas to 0 - with
-  # selfHeal on, ArgoCD saw that as drift from git's replicas: 1 and
-  # reverted it within seconds of every sleep attempt, defeating the
-  # whole point. Confirmed live: kube-green's own logs showed a correct
-  # sleep trigger at 20:00 Paris, and this Application's own sync history
-  # showed an operation finishing 33 seconds later - the deployment was
-  # asleep for less time than it takes to read this comment. Ignoring
-  # just spec/replicas here lets kube-green own that one field while
-  # ArgoCD still enforces everything else about this Deployment/
-  # StatefulSet normally.
   ignoreDifferences:
     - group: apps
       kind: Deployment

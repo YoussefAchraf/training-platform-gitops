@@ -1,19 +1,3 @@
-# Split out of charts/monitoring so these two Route resources aren't
-# subject to that Application's ServerSideApply=true syncOption (needed
-# app-wide there because kube-prometheus-stack's CRDs carry OpenAPI
-# schemas far past the 262144-byte last-applied-configuration limit under
-# client-side apply). Route (route.openshift.io/v1) is an OpenShift
-# aggregated API type, not a CRD - ArgoCD can't resolve an OpenAPI schema
-# for it under the structured-merge-diff SSA requires, so every sync
-# attempt failed with a permanent ComparisonError ("unable to resolve
-# parseableType for GroupVersionKind: route.openshift.io/v1, Kind=Route"),
-# confirmed live. A resource-level `ServerSideApply=false` annotation on
-# just the Route templates does NOT reliably override an Application-level
-# `ServerSideApply=true` - a known, documented ArgoCD limitation
-# (argoproj/argo-cd#20306) - so the only fix that doesn't fork/vendor
-# kube-prometheus-stack's own (multi-hundred-KB, per-file) CRDs is giving
-# these two Routes their own Application with normal (non-SSA) sync
-# options. See argocd/apps/monitoring-routes.yaml.
 apiVersion: v2
 name: monitoring-routes
 description: Grafana/Prometheus Routes for the monitoring stack, deployed as their own Application so ArgoCD never has to structured-merge-diff a Route

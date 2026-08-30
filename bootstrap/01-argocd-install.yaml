@@ -1,28 +1,3 @@
-# Applied by hand, once, AFTER 00-namespace.yaml and AFTER ArgoCD's CRDs +
-# controller are installed into the `argocd` namespace by some other means
-# the very first time: `oc apply -f bootstrap/argocd-cluster-install.yaml
-# -n argocd --server-side --force-conflicts` (see docs/runbook.md §1).
-# That first bootstrap is the chicken-and-egg step ARCHITECTURE-PLAN.md
-# §1/§3 calls out — ArgoCD cannot deploy itself into a cluster where it
-# doesn't exist yet.
-#
-# Use the vendored, corrected manifest above, not the live upstream URL —
-# confirmed on an actual OKD deploy that the unmodified upstream file
-# hits real bugs this Application can never recover from on its own (a
-# Deployment/StatefulSet's `spec.selector` is immutable, so an
-# incompatible one from an unmodified upstream install can't be patched
-# away once ArgoCD's Helm-based self-sync tries to reconcile it). A
-# one-time `helm install` instead of the raw manifest would sidestep the
-# same bug (it'd create these objects with the same selector convention
-# ArgoCD's self-sync expects from the start) but wasn't used here since
-# it adds a hard dependency on `helm` being installed on whatever machine
-# runs the bootstrap — the vendored manifest needs only `oc`. Full
-# explanation in the comment at the top of
-# bootstrap/argocd-cluster-install.yaml.
-#
-# This Application is what makes ArgoCD subsequently manage its OWN Helm
-# release going forward — from this point on, upgrading ArgoCD's version or
-# values is a `git push` to this repo, not a manual `helm upgrade`.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -39,21 +14,6 @@ spec:
     helm:
       releaseName: argocd
       values: |
-        # Real finding from an actual OKD deploy: every ArgoCD component
-        # shipped with zero resource requests (verified via `oc get
-        # deployment ... -o jsonpath='{.spec.template.spec.containers[0].resources}'`
-        # returning `{}` for all 7 Deployments + the controller
-        # StatefulSet). A pod with no requests gets Kubernetes' lowest
-        # priority class (BestEffort) - under any resource pressure
-        # (disk, CPU), these are evicted before anything else, including
-        # every app pod in this repo's own charts (which all set real
-        # requests). This is why dex-server and repo-server ended up with
-        # ~1000 combined dead pod objects after one night's worth of
-        # disk-pressure episodes that every *other* pod recovered from
-        # far more gracefully. Requests below are deliberately modest -
-        # enough for Burstable QoS protection, not so much that they eat
-        # meaningfully into this single-node cluster's already-tight
-        # scheduling headroom (4 CPU total).
         controller:
           resources:
             requests:
@@ -61,14 +21,6 @@ spec:
               memory: 256Mi
             limits:
               cpu: 500m
-              # Real finding, same night: 512Mi looked generous on paper but
-              # the controller OOM-killed (exit 137) within 8s of every
-              # restart once repo-server became reachable again after a
-              # long outage - rebuilding its full resource-tree cache in
-              # one burst needs real headroom, even though steady-state
-              # usage afterward is far lower. Bumped both request and
-              # limit; verified stable for 10+ minutes post-fix with 0
-              # restarts before this was committed.
               memory: 1Gi
         dex:
           resources:
@@ -86,51 +38,8 @@ spec:
             limits:
               cpu: 100m
               memory: 64Mi
-          # Real finding from an actual OKD deploy: the upstream chart's own
-          # default redis.securityContext (pod-level) hardcodes
-          # runAsUser: 999 (the standard redis image's built-in UID) - same
-          # bug class already fixed for the one-time vendored bootstrap
-          # manifest (bootstrap/argocd-cluster-install.yaml's own header),
-          # but that fix never carried over to THIS Helm-based self-sync
-          # path, since it's a separate values source (upstream
-          # argo-helm/argo-cd chart defaults, not our own manifest). OKD's
-          # restricted-v2/v3 SCCs reject any fixed UID outside the
-          # namespace's own allocated range, so every sync attempt using
-          # the chart's default permanently fails SCC validation (confirmed
-          # live: a stuck ReplicaSet stays at 0/0/0 forever, FailedCreate -
-          # the secret-init initContainer is in this same pod and fails
-          # identically, it has no runAsUser of its own to override).
-          # Key verified directly against the chart source for this exact
-          # pinned version (charts/argo-cd/values.yaml @ argo-cd-7.7.23,
-          # matching this Application's targetRevision: 7.7.x) - it's
-          # `redis.securityContext`, not `podSecurityContext`. Setting
-          # runAsUser to null removes the key from the merged values
-          # entirely (Helm's own values-merge semantics delete a base key
-          # when the override is explicitly null), letting OKD auto-assign
-          # an in-range UID instead. runAsNonRoot: true (the chart's other
-          # default alongside it) is left untouched and is already
-          # satisfied by any UID OKD assigns.
           securityContext:
             runAsUser: null
-          # Second, previously-hidden bug uncovered only after fixing the
-          # one above: the chart creates a dedicated argocd-redis-secret-init
-          # ServiceAccount + Role (get/create secrets) + RoleBinding
-          # (redisSecretInit.serviceAccount.create, true by default) for the
-          # secret-init initContainer that runs inside THIS SAME redis pod -
-          # but the pod's own serviceAccountName comes from a completely
-          # separate flag, redis.serviceAccount.create (false by default,
-          # confirmed against templates/redis/_helpers.tpl's
-          # `argo-cd.redis.serviceAccountName` helper), which falls back to
-          # "default" when unset. The dedicated SA/Role/RoleBinding therefore
-          # existed but were never attached to any pod - confirmed live via
-          # `oc get rolebinding argocd-redis-secret-init -o json`, which was
-          # already correctly bound to that SA, while the actual pod ran as
-          # system:serviceaccount:argocd:default and hit "secrets is
-          # forbidden" (Init:Error, CrashLoopBackOff) trying to create
-          # argocd-redis's auth secret. Pointing this pod at the same SA the
-          # RoleBinding already grants access to (rather than enabling
-          # redis.serviceAccount.create with no name, which would create yet
-          # a third, still-permissionless SA) reuses the existing binding.
           serviceAccount:
             create: true
             name: argocd-redis-secret-init
@@ -143,12 +52,6 @@ spec:
               cpu: 50m
               memory: 32Mi
         repoServer:
-          # Trimmed from 100m to 75m immediately after applying this fix
-          # live: even this fix's own modest additions pushed the node to
-          # 98% CPU requested (3752m of 3800m allocatable), leaving too
-          # little room for frontend's own 50m to schedule. This specific
-          # single-node, 4-CPU-total cluster genuinely has no slack left -
-          # confirmed live, not theoretical.
           resources:
             requests:
               cpu: 75m
@@ -174,13 +77,8 @@ spec:
               memory: 64Mi
         server:
           extraArgs:
-            - --insecure   # TLS terminates at the OKD Route (edge), not here
+            - --insecure
           route:
-            # Turned on: external UI access is wanted now. --insecure above
-            # was already set in anticipation of exactly this — TLS
-            # terminates at the Route (edge), matching every other Route in
-            # this repo (frontend, grafana, prometheus), not at
-            # argocd-server itself.
             enabled: true
             hostname: "argocd-training-platform.apps-crc.testing"
             termination_type: edge
@@ -203,4 +101,4 @@ spec:
       prune: true
       selfHeal: true
     syncOptions:
-      - CreateNamespace=false   # namespace already created by 00-namespace.yaml
+      - CreateNamespace=false
