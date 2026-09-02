@@ -1,6 +1,6 @@
 n8n:
   image:
-    tag: "sha-150e5a5"
+    tag: "sha-afea1b8"
   env:
     N8N_WEBHOOK_URL: "https://training-platform.apps-crc.testing/"
     N8N_OWNER_EMAIL: "admin@localhost.local"
