@@ -1,0 +1,9 @@
+image:
+  tag: "sha-7c2b94d"
+
+env:
+  CLIENT_URL: ""
+  VAPID_PUBLIC_KEY: "BNS64Kb9w84XhbJsqcwhqOt0djB-cwlZNXKNdgPmAlpcraWkSMfsNgkTzkyuBbA7L5Hq4C52Jcm9yWV8fLOhu58"
+
+vault:
+  enabled: false
