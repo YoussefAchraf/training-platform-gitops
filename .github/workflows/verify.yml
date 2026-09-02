@@ -43,17 +43,22 @@ jobs:
             | tar xz kubeconform
           sudo mv kubeconform /usr/local/bin/
 
-      - name: helm template | kubeconform -strict (first-party charts, against local-okd values)
+      - name: helm template | kubeconform -strict (first-party charts, every environment)
         run: |
           set -e
-          for c in postgres backend frontend chatbot; do
-            echo "::group::kubeconform $c"
-            helm template "charts/$c" -f "environments/local-okd/$c-values.yaml" \
-              | kubeconform -strict -summary \
-                  -schema-location default \
-                  -kubernetes-version 1.29.0 \
-                  -skip Route,ServiceMonitor
-            echo "::endgroup::"
+          for env in environments/*/; do
+            envname=$(basename "$env")
+            for c in postgres backend frontend chatbot; do
+              valuesfile="$env$c-values.yaml"
+              [ -f "$valuesfile" ] || continue
+              echo "::group::kubeconform $envname/$c"
+              helm template "charts/$c" -f "$valuesfile" \
+                | kubeconform -strict -summary \
+                    -schema-location default \
+                    -kubernetes-version 1.29.0 \
+                    -skip Route,ServiceMonitor
+              echo "::endgroup::"
+            done
           done
 
   secret-scan:
@@ -107,10 +112,15 @@ jobs:
               cat "$c"/*.yaml > "/tmp/rendered/${name}.yaml"
               continue
             fi
-            valuesfile="environments/local-okd/${name}-values.yaml"
-            if [ -f "$valuesfile" ]; then
-              helm template "$c" -f "$valuesfile" > "/tmp/rendered/${name}.yaml"
-            else
+            rendered_any=false
+            for env in environments/*/; do
+              envname=$(basename "$env")
+              valuesfile="$env${name}-values.yaml"
+              [ -f "$valuesfile" ] || continue
+              helm template "$c" -f "$valuesfile" > "/tmp/rendered/${envname}-${name}.yaml"
+              rendered_any=true
+            done
+            if [ "$rendered_any" = false ]; then
               helm template "$c" > "/tmp/rendered/${name}.yaml"
             fi
           done
@@ -140,9 +150,15 @@ jobs:
 
       - name: Render first-party charts (policy applies to charts this repo owns, not upstream vault/monitoring internals)
         run: |
+          set -e
           mkdir -p /tmp/rendered
-          for name in postgres backend frontend chatbot; do
-            helm template "charts/$name" -f "environments/local-okd/$name-values.yaml" > "/tmp/rendered/${name}.yaml"
+          for env in environments/*/; do
+            envname=$(basename "$env")
+            for c in postgres backend frontend chatbot; do
+              valuesfile="$env$c-values.yaml"
+              [ -f "$valuesfile" ] || continue
+              helm template "charts/$c" -f "$valuesfile" > "/tmp/rendered/${envname}-${c}.yaml"
+            done
           done
 
       - name: Install conftest
