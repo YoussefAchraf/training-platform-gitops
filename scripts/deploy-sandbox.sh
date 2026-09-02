@@ -19,7 +19,7 @@ for s in postgres-credentials backend-credentials chatbot-credentials; do
   fi
 done
 
-for c in postgres backend frontend chatbot; do
+for c in postgres backend chatbot frontend; do
   echo "=== $c ==="
   helm upgrade --install "$c" "charts/$c" \
     -f "environments/openshift-sandbox/$c-values.yaml" \
