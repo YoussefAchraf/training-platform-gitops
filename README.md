@@ -540,10 +540,41 @@ inside the charts themselves.
 |---|---|---|
 | **Self-managed OCP** | Install Red Hat's OpenShift Container Platform yourself (on-prem or on cloud infrastructure you provision) | Needs a Red Hat account, a pull secret, and an active subscription; you own the control plane |
 | **Managed OpenShift** (ROSA on AWS, ARO on Azure, OpenShift Dedicated) | Red Hat (or the cloud provider, jointly) runs and patches the control plane for you | Simpler operationally; billed per node/hour on top of the underlying cloud infrastructure cost |
+| **OpenShift Developer Sandbox** | Red Hat's free, time-boxed, shared multi-tenant cluster — one namespace, no cluster-admin | See below — this one needs real architectural exceptions, not just new values |
 
-Either way, this repo's own charts and Applications are unaffected — the
-difference is entirely in how you get `oc` access to the cluster and what
-you put in the new environment's values files.
+The first two give you a real cluster you administer, so this repo's own
+charts and Applications transfer with only new environment-level values.
+Developer Sandbox is different enough to call out on its own.
+
+### Developer Sandbox specifically
+
+Confirmed directly against a real Sandbox account (`oc auth can-i create
+clusterrole` → `no`, no OpenShift GitOps operator available): you get exactly
+one namespace and zero cluster-admin rights. Several pieces of this repo's
+architecture assume cluster-admin, so they can't come along unmodified:
+
+| Piece | Why it doesn't fit | What replaces it |
+|---|---|---|
+| Self-installed ArgoCD (`bootstrap/`) | Needs cluster-scoped CRDs (`Application`, `AppProject`) | Direct `helm upgrade --install`, run by hand or from a script — `scripts/deploy-sandbox.sh` |
+| Vault's Agent Injector | Needs a cluster-scoped `MutatingWebhookConfiguration` | The plain-`Secret` fallback every chart already has (`vault.enabled: false`) |
+| `charts/monitoring` (kube-prometheus-stack) | ~10 CRDs need cluster-admin; node-exporter needs `hostNetwork`/`hostPID`, which a shared cluster's SCC won't grant regardless | Not deployed on this target |
+| `charts/kube-green` | Own CRD needs cluster-admin | Not deployed on this target — Sandbox already auto-reclaims idle environments on its own |
+| Multiple namespaces (`vault`, `argocd`, `monitoring`, `kube-green`, `training-platform`) | Sandbox gives you one fixed, pre-named namespace | Everything goes in that one namespace |
+
+What's actually deployed there: `backend`, `frontend`, `chatbot`, `postgres`
+only — none of these are cluster-scoped and none bring their own CRDs, so
+they're unaffected otherwise. `environments/openshift-sandbox/` holds their
+values (secrets via the plain-`Secret` fallback, using the matching
+`*-secrets.example.yaml` templates in that same directory); the frontend
+chart only creates a `Route` when `route.host` is set, so the practical
+bootstrap order is: deploy without a Route, run `oc expose svc/frontend` to
+get OpenShift's own auto-generated hostname, then write that real hostname
+back into `frontend-values.yaml`.
+
+This is the one deployment path in this repo that's push-based rather than
+GitOps — a direct, deliberate exception forced by the platform itself
+having no cluster-admin path to install ArgoCD, not a gap in this repo's
+own design.
 
 ### Migration checklist
 
