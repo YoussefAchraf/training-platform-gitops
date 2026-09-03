@@ -31,6 +31,7 @@ reconciles. This repo's own CI never runs `helm upgrade`, `oc apply`, or
 - [Day-2 operations](#day-2-operations)
 - [OKD → OpenShift migration](#okd--openshift-migration)
 - [Creating a SuperAdmin account](#creating-a-superadmin-account)
+- [Creating a Developer account](#creating-a-developer-account)
 - [Git workflow](#git-workflow)
 
 ---
@@ -41,7 +42,10 @@ Four roles — **Sales**, **Manager**, **Instructor**, **SuperAdmin** — manage
 a pipeline: providers → trainings → client sessions → instructor assignment
 → attendee QR feedback surveys → auto-generated PDF/NPS reports. An optional
 AI chat widget, backed by an n8n workflow stack, gives each role a
-role-scoped assistant.
+role-scoped assistant. A fifth role, **Developer**, sits outside that
+pipeline entirely — no chat agent, no self-signup, no bypass of the other
+roles' authorization checks — and exists only to read feedback reports the
+other four roles submit and publish feature announcements back to them.
 
 The platform is four independently-versioned repositories:
 
@@ -623,67 +627,98 @@ exactly the separation this repo's layout was built for.
 
 ## Creating a SuperAdmin account
 
-SuperAdmin is a structural role, not a self-service signup — the backend
-provides a dedicated seed script for creating one directly against the
-database, run once against a running deployment (local OKD today, or a
-real OpenShift cluster after migration).
+SuperAdmin is a structural role, not a self-service signup. The backend
+repo ships `scripts/seedSuperAdmin.ts` for this, but **it cannot be run
+inside the deployed pod as-is**: the production Dockerfile's runtime stage
+only copies `dist/` (compiled from `src/**/*.ts` — `tsconfig.json`'s
+`include` never touches `scripts/`) and strips `npm`/`npx` entirely to
+shrink the image. There's no compiled `dist/scripts/seedSuperAdmin.js` to
+run and nothing to run it with. Confirmed twice against a live cluster, not
+assumed.
 
-The backend's own production image already ships a compiled build (no
-`ts-node`/`tsc` step needed at runtime, unlike running the script ad hoc
-from TypeScript source) — the seed script runs the same way in both
-environments, only the `oc` context changes.
-
-### 1. Confirm the script's env-var contract
-
-From the backend repo (`training-platform-backend`), the seed script reads:
-
-| Env var | Requirement |
-|---|---|
-| `SUPERADMIN_EMAIL` | a real email address |
-| `SUPERADMIN_PASSWORD` | at least 12 characters |
-| `SUPERADMIN_FIRSTNAME` | |
-| `SUPERADMIN_LASTNAME` | |
-| `DATABASE_URL` | already set inside the cluster via Vault/the backend Secret — no need to pass this one manually when running inside the cluster |
-
-### 2. Run it against the cluster
-
-The most direct approach is a one-off debug pod using the exact same
-backend image already deployed, so `DATABASE_URL` and every other
-Vault-delivered env var are already correctly wired:
+The reliable path instead: hash the password with the backend pod's own
+`bcrypt` (guarantees the exact same hashing the app itself would use), then
+insert the row directly via SQL, using the pod's own `PasswordHasher`
+settings (`bcrypt`, 10 salt rounds) and the `roles` table already seeded by
+migrations.
 
 ```sh
-# Confirm where the compiled script actually lives in the current image
-# first — this can shift between backend versions, don't assume a path.
-oc debug deployment/backend -n training-platform -- find /app -iname "*seedsuperadmin*"
+EMAIL="admin@yourdomain.com"
+FIRSTNAME="Ada"
+LASTNAME="Admin"
+NEW_PASS=$(openssl rand -base64 24 | tr -d '=+/')   # or supply your own, 12+ chars
 
-# Then run it for real, e.g.:
-oc exec -n training-platform deploy/backend -- \
-  env SUPERADMIN_EMAIL='admin@yourdomain.com' \
-      SUPERADMIN_PASSWORD='a-real-strong-password-12-chars-min' \
-      SUPERADMIN_FIRSTNAME='Ada' \
-      SUPERADMIN_LASTNAME='Admin' \
-  node dist/scripts/seedSuperAdmin.js
+HASH=$(oc exec -n training-platform deploy/backend -c backend -- node -e \
+  "require('bcrypt').hash(process.argv[1], 10).then(h=>console.log(h))" "$NEW_PASS")
+
+oc exec -n training-platform postgres-0 -- psql -U postgres -d training_platform -c "
+INSERT INTO users (firstname, lastname, email, password_hash, role_id, status, has_seen_tour, created_at, updated_at)
+SELECT '$FIRSTNAME', '$LASTNAME', '$EMAIL', '$HASH', id, 'approved', false, now(), now()
+FROM roles WHERE name = 'SuperAdmin';
+"
+
+echo "email: $EMAIL"
+echo "password: $NEW_PASS"   # only place this is ever shown — save it now
 ```
 
-If the compiled path differs from `dist/scripts/seedSuperAdmin.js` in the
-image actually deployed, use whatever the `find` command above reports
-instead — don't assume the path is stable across backend versions.
+### Verify
 
-### 3. Verify
+Don't just trust the insert — confirm with a real login call against the
+dedicated endpoint:
 
-Log in at the frontend's dedicated `/superadmin/login` route (not the
-regular signup/login flow) with the email and password just set. A
-SuperAdmin account structurally bypasses every per-endpoint role check
-rather than being granted a permission list — treat the credential with
-the same care as Vault's own root token.
+```sh
+oc exec -n training-platform deploy/backend -c backend -- node -e "
+const http = require('http');
+const data = JSON.stringify({email: process.argv[1], password: process.argv[2]});
+const req = http.request({host:'127.0.0.1',port:4000,path:'/auth/admin-login',method:'POST',headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(data)}}, res => { console.log('HTTP', res.statusCode); res.on('data',()=>{}); });
+req.on('error', e => console.log('error', e.message));
+req.write(data); req.end();
+" "$EMAIL" "$NEW_PASS"
+```
+
+Should print `HTTP 200`. Then log in for real at the frontend's dedicated
+`/superadmin/login` route (not the regular signup/login flow). A SuperAdmin
+account structurally bypasses every per-endpoint role check rather than
+being granted a permission list — treat the credential with the same care
+as Vault's own root token.
 
 ### On a migrated OpenShift cluster
 
-The exact same procedure applies — `oc exec`/`oc debug` work identically
-against any OpenShift cluster once `oc login` targets it. The only
-difference is which cluster your `oc` context currently points at; confirm
-with `oc whoami --show-context` before running the command above against a
+The exact same procedure applies — `oc exec` works identically against any
+OpenShift cluster once `oc login` targets it. The only difference is which
+cluster your `oc` context currently points at; confirm with
+`oc whoami --show-context` before running the commands above against a
 production target.
+
+## Creating a Developer account
+
+Same structural-role, no-self-signup shape as SuperAdmin, and the same
+production-image constraint applies (`scripts/seedDeveloper.ts` can't run
+inside the deployed pod either) — so the same direct-SQL approach, just
+against the `Developer` role row and its own dedicated login endpoint:
+
+```sh
+EMAIL="developer@yourdomain.com"
+FIRSTNAME="Dev"
+LASTNAME="User"
+NEW_PASS=$(openssl rand -base64 24 | tr -d '=+/')
+
+HASH=$(oc exec -n training-platform deploy/backend -c backend -- node -e \
+  "require('bcrypt').hash(process.argv[1], 10).then(h=>console.log(h))" "$NEW_PASS")
+
+oc exec -n training-platform postgres-0 -- psql -U postgres -d training_platform -c "
+INSERT INTO users (firstname, lastname, email, password_hash, role_id, status, has_seen_tour, created_at, updated_at)
+SELECT '$FIRSTNAME', '$LASTNAME', '$EMAIL', '$HASH', id, 'approved', false, now(), now()
+FROM roles WHERE name = 'Developer';
+"
+
+echo "email: $EMAIL"
+echo "password: $NEW_PASS"
+```
+
+Verify the same way, against `/auth/developer-login` instead of
+`/auth/admin-login`. Log in for real at the frontend's `/developer/login`
+route to reach the feedback inbox and feature-announcement dashboard.
 
 ---
 
