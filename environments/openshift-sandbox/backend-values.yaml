@@ -2,7 +2,7 @@ image:
   tag: "sha-bb0c96e"
 
 env:
-  CLIENT_URL: ""
+  CLIENT_URL: "https://frontend-achrafyoussef-ay-dev.apps.rm3.7wse.p1.openshiftapps.com"
   VAPID_PUBLIC_KEY: "BNS64Kb9w84XhbJsqcwhqOt0djB-cwlZNXKNdgPmAlpcraWkSMfsNgkTzkyuBbA7L5Hq4C52Jcm9yWV8fLOhu58"
 
 vault:
