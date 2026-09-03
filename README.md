@@ -673,7 +673,7 @@ const data = JSON.stringify({email: process.argv[1], password: process.argv[2]})
 const req = http.request({host:'127.0.0.1',port:4000,path:'/auth/admin-login',method:'POST',headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(data)}}, res => { console.log('HTTP', res.statusCode); res.on('data',()=>{}); });
 req.on('error', e => console.log('error', e.message));
 req.write(data); req.end();
-" "\$EMAIL" "\$NEW_PASS"
+" "$EMAIL" "$NEW_PASS"
 ```
 
 Should print `HTTP 200`. Then log in for real at the frontend's dedicated
