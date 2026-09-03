@@ -1,5 +1,5 @@
 image:
-  tag: "sha-7c2b94d"
+  tag: "sha-bb0c96e"
 
 env:
   CLIENT_URL: ""
