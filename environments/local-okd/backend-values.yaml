@@ -1,5 +1,5 @@
 image:
-  tag: "sha-bf86f54"
+  tag: "sha-c70db91"
 
 env:
   CLIENT_URL: "https://training-platform.apps-crc.testing"
