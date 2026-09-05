@@ -1,5 +1,5 @@
 image:
-  tag: "sha-138daf3"
+  tag: "sha-c47f211"
 
 route:
   host: "training-platform.apps-crc.testing"
