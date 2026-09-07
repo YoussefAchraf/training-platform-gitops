@@ -304,7 +304,7 @@ categories:
 |---|---|---|
 | **Freely regenerate** | `jwt_secret` | Generated the moment it's missing, no prompt — nothing else depends on a specific value, rotating it only invalidates existing sessions |
 | **Init-once, pinned-after** | `postgres_password` (shared by backend + postgres), both redis passwords, `n8n_encryption_key`, `n8n_owner_password` | Only safe to freely generate on a genuinely fresh install — each is tied to an external store (a data directory, a PVC) that only reads it once. The script asks one combined "is this a fresh install?" question; a "no" prompts for the existing value instead of generating a new, desynced one |
-| **External, human-supplied** | `smtp_user`, `smtp_password`, `n8n_ai_api_key`, `vapid_private_key` | Real third-party credentials nothing on this machine can invent — always a masked, typed prompt. `vapid_private_key`'s prompt is explicit that it wants the *existing* value: its public half is already baked into the deployed frontend image, so a freshly generated pair would break every live browser push subscription |
+| **External, human-supplied** | `smtp_user`, `smtp_password`, `n8n_gemini_api_key`, `vapid_private_key` | Real third-party credentials nothing on this machine can invent — always a masked, typed prompt. `vapid_private_key`'s prompt is explicit that it wants the *existing* value: its public half is already baked into the deployed frontend image, so a freshly generated pair would break every live browser push subscription |
 
 `postgres_password` is written to both `training-platform/data/backend`
 and `training-platform/data/postgres` from the same source value in the
@@ -324,7 +324,7 @@ actively detects rather than something that can happen silently.
 | `vapid_private_key` | backend | `training-platform/data/backend` | web push; the public half is not secret |
 | `n8n_encryption_key` | n8n | `training-platform/data/n8n` | encrypts n8n's stored credentials at rest |
 | `n8n_owner_password` | n8n, metrics-exporter | `training-platform/data/n8n` | n8n editor login |
-| `n8n_ai_api_key` | n8n | `training-platform/data/n8n` | the LLM provider key |
+| `n8n_gemini_api_key` | n8n | `training-platform/data/n8n` | Google Gemini API key |
 | `redis_password` (chatbot's) | n8n | `training-platform/data/n8n` | distinct instance/value from backend's own |
 
 Non-secrets (`CLIENT_URL`, `PORT`, `SMTP_HOST`, Route hosts, image tags,
@@ -345,7 +345,7 @@ data directory, the redis Secrets, n8n's PVC) survive, `vault-bootstrap-
 secrets.js` will hit its fresh-install prompt for every init-once value —
 answer **no**, and re-supply the real existing values by hand instead of
 generating new ones that would desync from what's already in use.
-Recovering `smtp_user`/`smtp_password`/`n8n_ai_api_key`/`vapid_private_key`
+Recovering `smtp_user`/`smtp_password`/`n8n_gemini_api_key`/`vapid_private_key`
 in this scenario always requires a human who separately recorded them —
 true of any real deployment, not a gap specific to this one.
 

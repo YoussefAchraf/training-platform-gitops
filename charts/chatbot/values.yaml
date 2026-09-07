@@ -21,8 +21,6 @@ n8n:
     N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
     BACKEND_API_URL: "http://backend:4000"
     MCP_SERVER_URL: ""
-    AI_BASE_URL: "https://api.openai.com/v1"
-    AI_MODEL: "gpt-4o-mini"
     N8N_OWNER_EMAIL: "admin@localhost.local"
     N8N_METRICS: "true"
     N8N_METRICS_INCLUDE_WORKFLOW_ID_LABEL: "true"

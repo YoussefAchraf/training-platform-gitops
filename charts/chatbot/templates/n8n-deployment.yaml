@@ -27,7 +27,7 @@ spec:
           {{`{{- with secret "`}}{{ .Values.vault.secretPath }}{{`" -}}`}}
           N8N_ENCRYPTION_KEY='{{`{{ .Data.data.n8n_encryption_key }}`}}'
           N8N_OWNER_PASSWORD='{{`{{ .Data.data.n8n_owner_password }}`}}'
-          AI_API_KEY='{{`{{ .Data.data.n8n_ai_api_key }}`}}'
+          GEMINI_API_KEY='{{`{{ .Data.data.n8n_gemini_api_key }}`}}'
           REDIS_PASSWORD='{{`{{ .Data.data.redis_password }}`}}'
           {{`{{- end -}}`}}
       {{- end }}
@@ -70,11 +70,11 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.secrets.existingSecretName }}
                   key: N8N_OWNER_PASSWORD
-            - name: AI_API_KEY
+            - name: GEMINI_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.secrets.existingSecretName }}
-                  key: AI_API_KEY
+                  key: GEMINI_API_KEY
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
