@@ -28,6 +28,7 @@ spec:
           N8N_ENCRYPTION_KEY='{{`{{ .Data.data.n8n_encryption_key }}`}}'
           N8N_OWNER_PASSWORD='{{`{{ .Data.data.n8n_owner_password }}`}}'
           GEMINI_API_KEY='{{`{{ .Data.data.n8n_gemini_api_key }}`}}'
+          JWT_SECRET='{{`{{ .Data.data.n8n_jwt_secret }}`}}'
           REDIS_PASSWORD='{{`{{ .Data.data.redis_password }}`}}'
           {{`{{- end -}}`}}
       {{- end }}
@@ -75,6 +76,11 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.secrets.existingSecretName }}
                   key: GEMINI_API_KEY
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecretName }}
+                  key: JWT_SECRET
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
