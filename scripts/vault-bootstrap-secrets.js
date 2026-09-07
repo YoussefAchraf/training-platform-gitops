@@ -31,7 +31,7 @@ const FIELD_SPECS = {
     fields: {
       n8n_encryption_key: 'generated-pinned',
       n8n_owner_password: 'generated-pinned',
-      n8n_ai_api_key: 'prompted',
+      n8n_gemini_api_key: 'prompted',
       redis_password: 'generated-pinned',
     },
   },
