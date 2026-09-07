@@ -1,5 +1,5 @@
 image:
-  tag: "sha-f97c23b"
+  tag: "sha-0511e91"
 
 route:
   host: "frontend-achrafyoussef-ay-dev.apps.rm3.7wse.p1.openshiftapps.com"
