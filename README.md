@@ -325,6 +325,7 @@ actively detects rather than something that can happen silently.
 | `n8n_encryption_key` | n8n | `training-platform/data/n8n` | encrypts n8n's stored credentials at rest |
 | `n8n_owner_password` | n8n, metrics-exporter | `training-platform/data/n8n` | n8n editor login |
 | `n8n_gemini_api_key` | n8n | `training-platform/data/n8n` | Google Gemini API key |
+| `n8n_jwt_secret` | n8n | `training-platform/data/n8n` | must be the exact same value as backend's own `jwt_secret` - the trunk workflow verifies the same HS256 signature and fails closed (unauthenticated) if it doesn't match |
 | `redis_password` (chatbot's) | n8n | `training-platform/data/n8n` | distinct instance/value from backend's own |
 
 Non-secrets (`CLIENT_URL`, `PORT`, `SMTP_HOST`, Route hosts, image tags,

@@ -19,6 +19,7 @@ n8n:
     GENERIC_TIMEZONE: "Africa/Casablanca"
     N8N_WEBHOOK_URL: ""
     N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+    NODE_FUNCTION_ALLOW_BUILTIN: "crypto"
     BACKEND_API_URL: "http://backend:4000"
     MCP_SERVER_URL: ""
     N8N_OWNER_EMAIL: "admin@localhost.local"
