@@ -35,19 +35,19 @@ spec:
                 - |
                   set -eu
                   for ss in {{ .Values.statefulSets | join " " }}; do
-                    replicas=$(kubectl get statefulset "$ss" -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "")
+                    replicas=$(oc get statefulset "$ss" -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "")
                     if [ "$replicas" = "0" ]; then
                       echo "$ss is asleep (0 replicas) - waking it up"
-                      kubectl scale statefulset "$ss" --replicas=1
+                      oc scale statefulset "$ss" --replicas=1
                     else
                       echo "$ss: $replicas replica(s), ok"
                     fi
                   done
                   for d in {{ .Values.deployments | join " " }}; do
-                    replicas=$(kubectl get deployment "$d" -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "")
+                    replicas=$(oc get deployment "$d" -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "")
                     if [ "$replicas" = "0" ]; then
                       echo "$d is asleep (0 replicas) - waking it up"
-                      kubectl scale deployment "$d" --replicas=1
+                      oc scale deployment "$d" --replicas=1
                     else
                       echo "$d: $replicas replica(s), ok"
                     fi
