@@ -1,6 +1,6 @@
 n8n:
   image:
-    tag: "sha-9d2e951"
+    tag: "sha-e0609d5"
   env:
     N8N_WEBHOOK_URL: ""
     N8N_OWNER_EMAIL: "admin@localhost.local"
