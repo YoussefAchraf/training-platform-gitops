@@ -1,0 +1,40 @@
+image:
+  repository: bitnami/kubectl
+  tag: "1.31.1"
+  pullPolicy: IfNotPresent
+
+# Every N minutes, check each workload below and scale it back to 1 if the
+# Sandbox idler has scaled it to 0. Standard cron syntax.
+schedule: "*/10 * * * *"
+
+# Resource names to watch, grouped by kind - must match the actual
+# StatefulSet/Deployment names each chart creates.
+statefulSets:
+  - postgres
+  - backend-redis
+  - chatbot-redis
+
+deployments:
+  - backend
+  - frontend
+  - n8n
+
+successfulJobsHistoryLimit: 3
+failedJobsHistoryLimit: 3
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    cpu: 100m
+    memory: 64Mi
+
+securityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
