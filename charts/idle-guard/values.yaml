@@ -1,6 +1,10 @@
+# OpenShift's own built-in CLI/toolbox image (ships oc, git, jq, etc.) -
+# pulled straight from the cluster's internal registry: no external
+# registry dependency, no rate limits, no third-party tag churn to break.
+# Confirmed present on the Sandbox via: oc get imagestream tools -n openshift
 image:
-  repository: bitnami/kubectl
-  tag: "1.31.1"
+  repository: image-registry.openshift-image-registry.svc:5000/openshift/tools
+  tag: "latest"
   pullPolicy: IfNotPresent
 
 # Every N minutes, check each workload below and scale it back to 1 if the
