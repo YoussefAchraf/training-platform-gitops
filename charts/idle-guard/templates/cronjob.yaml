@@ -1,0 +1,56 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: idle-guard
+  labels:
+    app.kubernetes.io/name: idle-guard
+    app.kubernetes.io/part-of: training-platform
+spec:
+  schedule: {{ .Values.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: {{ .Values.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 120
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: idle-guard
+        spec:
+          restartPolicy: Never
+          serviceAccountName: idle-guard
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          containers:
+            - name: idle-guard
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              securityContext:
+                {{- toYaml .Values.containerSecurityContext | nindent 16 }}
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  for ss in {{ .Values.statefulSets | join " " }}; do
+                    replicas=$(kubectl get statefulset "$ss" -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "")
+                    if [ "$replicas" = "0" ]; then
+                      echo "$ss is asleep (0 replicas) - waking it up"
+                      kubectl scale statefulset "$ss" --replicas=1
+                    else
+                      echo "$ss: $replicas replica(s), ok"
+                    fi
+                  done
+                  for d in {{ .Values.deployments | join " " }}; do
+                    replicas=$(kubectl get deployment "$d" -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "")
+                    if [ "$replicas" = "0" ]; then
+                      echo "$d is asleep (0 replicas) - waking it up"
+                      kubectl scale deployment "$d" --replicas=1
+                    else
+                      echo "$d: $replicas replica(s), ok"
+                    fi
+                  done
+              resources:
+                {{- toYaml .Values.resources | nindent 16 }}

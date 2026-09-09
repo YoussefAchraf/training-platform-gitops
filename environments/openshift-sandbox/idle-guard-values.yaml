@@ -1,0 +1,6 @@
+# Uses the chart's defaults as-is (schedule + the six real resource names
+# in this project already match). Kept as an explicit file so it deploys
+# the same way as every other component:
+#   helm upgrade --install idle-guard charts/idle-guard \
+#     -f environments/openshift-sandbox/idle-guard-values.yaml \
+#     -n achrafyoussef-ay-dev --wait --timeout 5m

@@ -1,0 +1,9 @@
+apiVersion: v2
+name: idle-guard
+description: >-
+  Periodic watchdog that detects workloads the OpenShift Sandbox idler has
+  scaled to 0 and scales them back to 1 automatically, without waiting for
+  someone to notice.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
