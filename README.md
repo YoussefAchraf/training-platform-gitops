@@ -78,7 +78,9 @@ argocd/apps/              one ArgoCD Application per deployable unit —
 charts/                   Helm charts:
                             first-party: backend, frontend, postgres, chatbot
                               (chatbot bundles n8n + its own redis +
-                              metrics-exporter as one logical unit)
+                              metrics-exporter as one logical unit),
+                              idle-guard (Sandbox-only, not an ArgoCD
+                              Application - see openshift-sandbox/ below)
                             thin wrappers around upstream charts: vault
                               (hashicorp/vault), monitoring
                               (kube-prometheus-stack), kube-green
@@ -566,15 +568,24 @@ architecture assume cluster-admin, so they can't come along unmodified:
 | `charts/kube-green` | Own CRD needs cluster-admin | Not deployed on this target — Sandbox already auto-reclaims idle environments on its own |
 | Multiple namespaces (`vault`, `argocd`, `monitoring`, `kube-green`, `training-platform`) | Sandbox gives you one fixed, pre-named namespace | Everything goes in that one namespace |
 
-What's actually deployed there: `backend`, `frontend`, `chatbot`, `postgres`
-only — none of these are cluster-scoped and none bring their own CRDs, so
-they're unaffected otherwise. `environments/openshift-sandbox/` holds their
-values (secrets via the plain-`Secret` fallback, using the matching
-`*-secrets.example.yaml` templates in that same directory); the frontend
-chart only creates a `Route` when `route.host` is set, so the practical
-bootstrap order is: deploy without a Route, run `oc expose svc/frontend` to
-get OpenShift's own auto-generated hostname, then write that real hostname
-back into `frontend-values.yaml`.
+What's actually deployed there: `backend`, `frontend`, `chatbot`, `postgres`,
+`idle-guard` — none of these are cluster-scoped and none bring their own
+CRDs, so they're unaffected otherwise. `environments/openshift-sandbox/`
+holds their values (secrets via the plain-`Secret` fallback, using the
+matching `*-secrets.example.yaml` templates in that same directory); the
+frontend chart only creates a `Route` when `route.host` is set, so the
+practical bootstrap order is: deploy without a Route, run
+`oc expose svc/frontend` to get OpenShift's own auto-generated hostname,
+then write that real hostname back into `frontend-values.yaml`.
+
+`charts/idle-guard` is the other side of the `kube-green` row above: Sandbox
+auto-reclaims (scales to 0) workloads that sit idle, and unlike kube-green's
+scheduled sleep, there's no way to opt out of it. `idle-guard` is a
+namespace-scoped `CronJob` (needs no cluster-admin, so it fits here) that
+runs every 10 minutes, checks `postgres`/`backend-redis`/`chatbot-redis`/
+`backend`/`frontend`/`n8n`, and scales anything it finds at 0 replicas back
+to 1 — a self-service reactivation instead of waiting for someone to notice
+and run `oc scale` by hand.
 
 This is the one deployment path in this repo that's push-based rather than
 GitOps — a direct, deliberate exception forced by the platform itself
