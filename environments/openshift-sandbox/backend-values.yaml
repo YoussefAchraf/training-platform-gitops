@@ -1,5 +1,5 @@
 image:
-  tag: "sha-d4e8064"
+  tag: "sha-acf198a"
 
 env:
   CLIENT_URL: "https://frontend-achrafyoussef-ay-dev.apps.rm3.7wse.p1.openshiftapps.com"
