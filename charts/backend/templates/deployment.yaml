@@ -29,6 +29,7 @@ spec:
           SMTP_USER='{{`{{ .Data.data.smtp_user }}`}}'
           SMTP_PASS='{{`{{ .Data.data.smtp_password }}`}}'
           VAPID_PRIVATE_KEY='{{`{{ .Data.data.vapid_private_key }}`}}'
+          GEMINI_API_KEY='{{`{{ .Data.data.gemini_api_key }}`}}'
           {{`{{- end -}}`}}
       {{- end }}
     spec:
@@ -86,7 +87,16 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.secrets.existingSecretName }}
                   key: VAPID_PRIVATE_KEY
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecretName }}
+                  key: GEMINI_API_KEY
+                  optional: true
             {{- end }}
+          volumeMounts:
+            - name: attachments
+              mountPath: /app/storage
           livenessProbe:
             httpGet:
               path: /health
@@ -101,3 +111,7 @@ spec:
             periodSeconds: 10
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: attachments
+          persistentVolumeClaim:
+            claimName: backend-attachments

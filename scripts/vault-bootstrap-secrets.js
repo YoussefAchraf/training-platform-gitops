@@ -20,6 +20,7 @@ const FIELD_SPECS = {
       smtp_user: 'prompted',
       smtp_password: 'prompted',
       vapid_private_key: 'prompted-vapid',
+      gemini_api_key: 'prompted',
     },
   },
   postgres: {
