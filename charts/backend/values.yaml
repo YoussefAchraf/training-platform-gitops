@@ -39,6 +39,14 @@ env:
   VAPID_SUBJECT: "mailto:you@yourdomain.com"
   VAPID_PUBLIC_KEY: ""
 
+# Uploaded message attachments (images/voice/files) land on disk at
+# /app/storage - a real PVC, not emptyDir, so a redeploy or restart never
+# loses them. ReadWriteOnce is fine as long as replicaCount stays at 1.
+attachments:
+  persistence:
+    size: 5Gi
+    storageClassName: ""
+
 vault:
   enabled: false
   role: backend-role

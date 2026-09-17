@@ -218,8 +218,11 @@ frontend's Route and, when their hostnames are set, Grafana's and
 Prometheus's Routes for admin access.
 
 Every StatefulSet uses a real `PersistentVolumeClaim`, never `emptyDir` —
-enforced by `policy/security.rego` — so a pod restart never loses data. The
-one narrow exception the policy allows is a volume named `*-cache` (n8n's
+enforced by `policy/security.rego` — so a pod restart never loses data.
+`backend` (a Deployment, not a StatefulSet) has its own `backend-attachments`
+PVC too, for messaging attachments (images/voice/files) written to
+`/app/storage` — `ReadWriteOnce` is fine as long as `replicaCount` stays at
+1. The one narrow exception the policy allows is a volume named `*-cache` (n8n's
 build cache directory), which is genuinely safe to lose on restart and
 can't use a PVC anyway, since the image bakes its cache directory's
 ownership in a way that's incompatible with a persistent, pre-owned volume
@@ -306,7 +309,7 @@ categories:
 |---|---|---|
 | **Freely regenerate** | `jwt_secret` | Generated the moment it's missing, no prompt — nothing else depends on a specific value, rotating it only invalidates existing sessions |
 | **Init-once, pinned-after** | `postgres_password` (shared by backend + postgres), both redis passwords, `n8n_encryption_key`, `n8n_owner_password` | Only safe to freely generate on a genuinely fresh install — each is tied to an external store (a data directory, a PVC) that only reads it once. The script asks one combined "is this a fresh install?" question; a "no" prompts for the existing value instead of generating a new, desynced one |
-| **External, human-supplied** | `smtp_user`, `smtp_password`, `n8n_gemini_api_key`, `vapid_private_key` | Real third-party credentials nothing on this machine can invent — always a masked, typed prompt. `vapid_private_key`'s prompt is explicit that it wants the *existing* value: its public half is already baked into the deployed frontend image, so a freshly generated pair would break every live browser push subscription |
+| **External, human-supplied** | `smtp_user`, `smtp_password`, `n8n_gemini_api_key`, `gemini_api_key` (backend's), `vapid_private_key` | Real third-party credentials nothing on this machine can invent — always a masked, typed prompt (blank is a valid answer for `gemini_api_key`, which is genuinely optional - just press enter). `vapid_private_key`'s prompt is explicit that it wants the *existing* value: its public half is already baked into the deployed frontend image, so a freshly generated pair would break every live browser push subscription |
 
 `postgres_password` is written to both `training-platform/data/backend`
 and `training-platform/data/postgres` from the same source value in the
@@ -324,6 +327,7 @@ actively detects rather than something that can happen silently.
 | `jwt_secret` | backend | `training-platform/data/backend` | signs/verifies access tokens |
 | `smtp_user` / `smtp_password` | backend | `training-platform/data/backend` | approval-notification emails |
 | `vapid_private_key` | backend | `training-platform/data/backend` | web push; the public half is not secret |
+| `gemini_api_key` (backend's) | backend | `training-platform/data/backend` | optional - powers in-app message translation only; the app runs fine without it, translation just stays disabled. Distinct key/value from n8n's own |
 | `n8n_encryption_key` | n8n | `training-platform/data/n8n` | encrypts n8n's stored credentials at rest |
 | `n8n_owner_password` | n8n, metrics-exporter | `training-platform/data/n8n` | n8n editor login |
 | `n8n_gemini_api_key` | n8n | `training-platform/data/n8n` | Google Gemini API key |
