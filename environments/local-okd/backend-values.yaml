@@ -5,5 +5,9 @@ env:
   CLIENT_URL: "https://training-platform.apps-crc.testing"
   VAPID_PUBLIC_KEY: "BNS64Kb9w84XhbJsqcwhqOt0djB-cwlZNXKNdgPmAlpcraWkSMfsNgkTzkyuBbA7L5Hq4C52Jcm9yWV8fLOhu58"
 
+attachments:
+  persistence:
+    storageClassName: ""
+
 vault:
   enabled: true

@@ -1,9 +1,13 @@
 image:
-  tag: "sha-acf198a"
+  tag: "sha-22fd568"
 
 env:
   CLIENT_URL: "https://frontend-achrafyoussef-ay-dev.apps.rm3.7wse.p1.openshiftapps.com"
   VAPID_PUBLIC_KEY: "BNS64Kb9w84XhbJsqcwhqOt0djB-cwlZNXKNdgPmAlpcraWkSMfsNgkTzkyuBbA7L5Hq4C52Jcm9yWV8fLOhu58"
+
+attachments:
+  persistence:
+    storageClassName: ""
 
 vault:
   enabled: false
