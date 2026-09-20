@@ -750,3 +750,33 @@ Image tag bumps for backend/frontend/chatbot are opened automatically as a
 PR into `dev` whenever the corresponding app repo publishes a new image —
 review and merge like any other PR, then promote to `main` when ready to
 deploy.
+
+### Branch protection (lives in GitHub settings, not in git)
+
+Both `dev` and `main` carry the same rules. They are repository settings, so
+nothing in this repo's files enforces them or would reveal that they had
+gone missing — after any settings change or incident, re-read them:
+
+```sh
+gh api repos/YoussefAchraf/training-platform-gitops/branches/dev/protection
+gh api repos/YoussefAchraf/training-platform-gitops/branches/main/protection
+```
+
+| Rule | `dev` | `main` |
+|---|---|---|
+| Required status checks (must match the check-run names exactly): `dast / live-cluster-validation`, `verify / k8s-sast`, `verify / lint`, `verify / policy`, `verify / sast`, `verify / sca`, `verify / secret-scan` | yes | yes |
+| Branch must be up to date before merging | yes | yes |
+| Changes only via pull request (0 required approvals — single maintainer; raise this if a second reviewer joins) | yes | yes |
+| All review conversations resolved | — | yes |
+| Applies to administrators too | yes | yes |
+| Force-push blocked | yes | yes |
+| Deletion blocked | yes | yes |
+
+CodeQL's `Analyze (...)` checks are deliberately not required — they run on
+every PR but aren't merge gates.
+
+**Never pass `--delete-branch` to `gh pr merge` on a `dev` → `main`
+promotion PR.** The flag deletes the PR's *head* branch, which for a
+promotion is `dev` itself. Only use it on feature, bump, and sync branches
+— or skip it and delete those with `git push origin --delete <branch>`.
+Deletion protection on `dev`/`main` is the backstop, not the plan.
