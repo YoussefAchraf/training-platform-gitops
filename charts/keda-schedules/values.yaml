@@ -1,0 +1,29 @@
+# Empty on purpose: environments/<env>/keda-schedules-values.yaml lists the
+# workloads. An environment without KEDA (the Sandbox) simply never installs this.
+
+# IANA time zone the start/end times below are read in.
+timezone: Europe/Paris
+
+# Cron day-of-week for the awake window. 1-5 = Monday to Friday; weekends stay
+# asleep, the same as the kube-green schedule this replaces.
+days: "1-5"
+
+# How often KEDA evaluates the schedule.
+pollingIntervalSeconds: 30
+
+# Grace period after a window closes before a workload is scaled to zero.
+cooldownPeriodSeconds: 300
+
+# Keep everything awake regardless of the schedule (annotation
+# autoscaling.keda.sh/paused-replicas, set to each workload's `replicas`).
+# Prefer the one-off `oc annotate` from the README; this is for a committed
+# "no sleeping this week".
+pause:
+  enabled: false
+
+# - name:        workload name (also the ScaledObject name)
+#   kind:        Deployment | StatefulSet | Rollout
+#   apiVersion:  apps/v1 (default) or argoproj.io/v1alpha1 for a Rollout
+#   start / end: "HH:MM" awake window on the days above
+#   replicas:    replicas while awake
+workloads: []

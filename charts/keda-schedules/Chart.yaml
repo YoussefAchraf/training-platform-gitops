@@ -1,0 +1,6 @@
+apiVersion: v2
+name: keda-schedules
+description: KEDA ScaledObjects that put training-platform workloads to sleep outside working hours (replaces kube-green)
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
