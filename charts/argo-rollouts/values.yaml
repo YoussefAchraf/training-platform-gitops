@@ -1,0 +1,22 @@
+argo-rollouts:
+  # CRDs (Rollout, AnalysisTemplate, AnalysisRun, ...) are shipped by the chart
+  # and kept on uninstall so a removed release can never delete live Rollouts.
+  installCRDs: true
+  keepCRDs: true
+
+  controller:
+    # One replica: the single-node cluster has no second node to spread onto and
+    # the node's memory *requests* are nearly fully booked.
+    replicas: 1
+    resources:
+      requests:
+        cpu: 25m
+        memory: 48Mi
+      limits:
+        cpu: 200m
+        memory: 192Mi
+
+  # Promotion is done from the ArgoCD UI (Rollout resource actions) or the
+  # kubectl plugin, so the standalone dashboard is not deployed.
+  dashboard:
+    enabled: false

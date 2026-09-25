@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: keda
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/YoussefAchraf/training-platform-gitops.git
+    targetRevision: main
+    path: charts/keda
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: keda
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # KEDA's CRDs are also over the client-side apply annotation limit.
+      - ServerSideApply=true
+  ignoreDifferences:
+    # The KEDA operator generates its own certificates at runtime and patches
+    # the CA into this APIService; Git must not fight it.
+    - group: apiregistration.k8s.io
+      kind: APIService
+      name: v1beta1.external.metrics.k8s.io
+      jsonPointers:
+        - /spec/caBundle

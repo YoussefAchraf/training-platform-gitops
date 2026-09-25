@@ -1,0 +1,32 @@
+keda:
+  crds:
+    install: true
+
+  # Pinned tags, so IfNotPresent is safe and a pod restart never needs the network.
+  image:
+    pullPolicy: IfNotPresent
+
+  # The validating admission webhook only guards against two ScaledObjects
+  # targeting one workload. Each workload here has exactly one ScaledObject
+  # (charts/keda-schedules), so the extra pod and its certificate handling are
+  # not worth the memory on this node.
+  webhooks:
+    enabled: false
+
+  # Small requests: the scheduler books requests, not usage, and this node's
+  # memory requests are close to full. Limits leave room to burst.
+  resources:
+    operator:
+      requests:
+        cpu: 50m
+        memory: 96Mi
+      limits:
+        cpu: 500m
+        memory: 384Mi
+    metricServer:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 300m
+        memory: 256Mi
