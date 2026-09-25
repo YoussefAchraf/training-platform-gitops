@@ -55,6 +55,7 @@ jobs:
               helm template "charts/$c" -f "$valuesfile" \
                 | kubeconform -strict -summary \
                     -schema-location default \
+                    -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
                     -kubernetes-version 1.29.0 \
                     -skip Route,ServiceMonitor
               echo "::endgroup::"

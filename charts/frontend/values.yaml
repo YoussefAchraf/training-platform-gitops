@@ -11,6 +11,36 @@ service:
 route:
   host: ""
   tlsTermination: edge
+  # Load balancing across frontend pods at the OpenShift router.
+  # balance: roundrobin | leastconn | random | source ("" keeps the router default).
+  balance: ""
+  # true = no sticky-session cookie, so every request is balanced on its own.
+  # Safe here: the frontend is stateless static content plus a reverse proxy.
+  disableCookies: false
+
+# Blue/green release with Argo Rollouts. Off by default so the chart renders the
+# plain Deployment (Sandbox, or any cluster without the Rollouts CRDs).
+rollout:
+  enabled: false
+  # false = a person promotes the new version after looking at it.
+  autoPromotionEnabled: false
+  # How long the previous ReplicaSet is kept after a promotion (instant rollback).
+  scaleDownDelaySeconds: 300
+  analysis:
+    enabled: true
+    # Extra path checked through the nginx reverse proxy to the backend
+    # ("" = only check the SPA itself). Proves BACKEND_UPSTREAM works.
+    apiPath: "api/health"
+
+# Keep serving requests that are already in flight when a pod is removed: sleep
+# before SIGTERM so the router and Service drop the endpoint first. 0 = off.
+gracefulShutdown:
+  preStopSleepSeconds: 0
+
+# Voluntary disruptions may take down at most this many pods at once.
+pdb:
+  enabled: false
+  maxUnavailable: 1
 
 securityContext:
   runAsNonRoot: true
