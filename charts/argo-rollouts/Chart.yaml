@@ -1,0 +1,10 @@
+apiVersion: v2
+name: argo-rollouts
+description: Wrapper chart pulling in upstream argo-rollouts (the blue/green controller), trimmed for a single-node local-OKD environment
+type: application
+version: 0.1.0
+appVersion: "1.10.0"
+dependencies:
+  - name: argo-rollouts
+    version: "2.43.2"
+    repository: "https://argoproj.github.io/argo-helm"

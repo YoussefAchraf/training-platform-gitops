@@ -1,0 +1,10 @@
+apiVersion: v2
+name: keda
+description: Wrapper chart pulling in upstream KEDA (schedule-based scale-to-zero, replaces kube-green), trimmed for a single-node local-OKD environment
+type: application
+version: 0.1.0
+appVersion: "2.20.2"
+dependencies:
+  - name: keda
+    version: "2.20.2"
+    repository: "https://kedacore.github.io/charts"
