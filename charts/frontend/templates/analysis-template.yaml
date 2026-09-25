@@ -1,0 +1,52 @@
+{{- if and .Values.rollout.enabled .Values.rollout.analysis.enabled }}
+# Smoke check run by the Rollout before promotion (against frontend-preview)
+# and after it (against frontend). It reuses the frontend image, which already
+# ships busybox wget, so no extra image is pulled. A failed run aborts the
+# release and the old ReplicaSet keeps serving.
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: frontend-smoke
+  labels:
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/part-of: training-platform
+spec:
+  args:
+    - name: base-url
+  metrics:
+    - name: http-smoke
+      count: 3
+      interval: 10s
+      failureLimit: 0
+      provider:
+        job:
+          spec:
+            backoffLimit: 0
+            activeDeadlineSeconds: 60
+            template:
+              spec:
+                restartPolicy: Never
+                securityContext:
+                  {{- toYaml .Values.securityContext | nindent 18 }}
+                containers:
+                  - name: smoke
+                    image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+                    imagePullPolicy: {{ .Values.image.pullPolicy }}
+                    command: ["sh", "-c"]
+                    args:
+                      - |
+                        set -e
+                        wget -q -T 5 -O /dev/null "{{`{{args.base-url}}`}}"
+                        {{- if .Values.rollout.analysis.apiPath }}
+                        wget -q -T 5 -O /dev/null "{{`{{args.base-url}}`}}{{ .Values.rollout.analysis.apiPath }}"
+                        {{- end }}
+                    securityContext:
+                      {{- toYaml .Values.containerSecurityContext | nindent 22 }}
+                    resources:
+                      requests:
+                        cpu: 10m
+                        memory: 16Mi
+                      limits:
+                        cpu: 100m
+                        memory: 64Mi
+{{- end }}

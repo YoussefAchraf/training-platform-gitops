@@ -3,6 +3,33 @@ image:
 
 route:
   host: "training-platform.apps-crc.testing"
+  # Load balancing across frontend pods: fewest active connections, and no
+  # sticky-session cookie (the frontend is stateless).
+  balance: leastconn
+  disableCookies: true
+
+# Blue/green releases (Argo Rollouts). Sandbox values do not set this, so the
+# Sandbox keeps the plain Deployment.
+rollout:
+  enabled: true
+
+# Sleep before SIGTERM so the router drops the pod first (no dropped requests
+# on scale-down or replacement).
+gracefulShutdown:
+  preStopSleepSeconds: 5
+
+pdb:
+  enabled: true
+
+# The node's memory *requests* are nearly fully booked. nginx serving static
+# files peaks at ~12Mi, so 32Mi is still generous; the 128Mi limit is unchanged.
+resources:
+  requests:
+    cpu: 50m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
 
 env:
   BACKEND_UPSTREAM: "http://backend.training-platform.svc.cluster.local:4000"
