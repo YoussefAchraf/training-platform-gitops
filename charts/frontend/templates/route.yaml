@@ -6,6 +6,15 @@ metadata:
   labels:
     app.kubernetes.io/name: frontend
     app.kubernetes.io/part-of: training-platform
+  {{- if or .Values.route.balance .Values.route.disableCookies }}
+  annotations:
+    {{- with .Values.route.balance }}
+    haproxy.router.openshift.io/balance: {{ . | quote }}
+    {{- end }}
+    {{- if .Values.route.disableCookies }}
+    haproxy.router.openshift.io/disable_cookies: "true"
+    {{- end }}
+  {{- end }}
 spec:
   host: {{ .Values.route.host }}
   to:

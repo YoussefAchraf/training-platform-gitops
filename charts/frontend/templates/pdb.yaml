@@ -1,0 +1,16 @@
+{{- if .Values.pdb.enabled }}
+# Voluntary disruptions (drains, upgrades) may take down at most one frontend
+# pod at a time, so with two replicas the Route always has an endpoint.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: frontend
+  labels:
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/part-of: training-platform
+spec:
+  maxUnavailable: {{ .Values.pdb.maxUnavailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: frontend
+{{- end }}

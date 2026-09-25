@@ -23,8 +23,23 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=false
+      # Prune the old Deployment only after the new Rollout is Healthy, so the
+      # Deployment -> Rollout conversion never leaves the Route without a pod.
+      - PruneLast=true
+      # Honour ignoreDifferences when applying, not only when diffing, so a sync
+      # never resets replicas that KEDA / the Rollout controller manage.
+      - RespectIgnoreDifferences=true
   ignoreDifferences:
     - group: apps
       kind: Deployment
       jsonPointers:
         - /spec/replicas
+    - group: argoproj.io
+      kind: Rollout
+      jsonPointers:
+        - /spec/replicas
+    # The Rollout controller owns the selector of the active and preview
+    # Services (it adds rollouts-pod-template-hash); Git must not revert it.
+    - kind: Service
+      jsonPointers:
+        - /spec/selector

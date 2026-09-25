@@ -6,6 +6,10 @@ is_workload if input.kind == "Deployment"
 
 is_workload if input.kind == "StatefulSet"
 
+# Argo Rollouts (blue/green) carry a pod template in the same place, so every
+# rule below must hold for them exactly as for a Deployment.
+is_workload if input.kind == "Rollout"
+
 containers contains c if {
 	is_workload
 	some c in input.spec.template.spec.containers
