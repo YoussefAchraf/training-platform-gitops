@@ -1,0 +1,49 @@
+{{- if .Values.rollout.enabled }}
+# Blue/green release of the backend (Argo Rollouts). Same pod template as the plain
+# Deployment. The active Service ("backend", used by the frontend's nginx and by n8n)
+# keeps pointing at the current ReplicaSet while the new one comes up behind the
+# preview Service; the selector is switched only on promotion.
+#
+# Safe with two pods alive at once because the four cron jobs take a PostgreSQL
+# advisory lock (JobLock) and, with SOCKET_REDIS_ADAPTER=true, live Socket.IO
+# events are relayed between pods through Redis. Both need a backend image that
+# contains those changes.
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: backend
+  labels:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/part-of: training-platform
+spec:
+  replicas: {{ .Values.replicaCount }}
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: backend
+  template:
+    {{- include "backend.podTemplate" . | nindent 4 }}
+  strategy:
+    blueGreen:
+      activeService: backend
+      previewService: backend-preview
+      # false = a person promotes (ArgoCD Rollout action, or
+      # `kubectl argo rollouts promote backend`). The old ReplicaSet stays for
+      # scaleDownDelaySeconds after a promotion, so rollback is instant.
+      autoPromotionEnabled: {{ .Values.rollout.autoPromotionEnabled }}
+      scaleDownDelaySeconds: {{ .Values.rollout.scaleDownDelaySeconds }}
+      {{- if .Values.rollout.analysis.enabled }}
+      prePromotionAnalysis:
+        templates:
+          - templateName: backend-smoke
+        args:
+          - name: url
+            value: {{ printf "http://backend-preview.%s.svc.cluster.local:%v%s" .Release.Namespace .Values.service.port .Values.rollout.analysis.path | quote }}
+      postPromotionAnalysis:
+        templates:
+          - templateName: backend-smoke
+        args:
+          - name: url
+            value: {{ printf "http://backend.%s.svc.cluster.local:%v%s" .Release.Namespace .Values.service.port .Values.rollout.analysis.path | quote }}
+      {{- end }}
+{{- end }}
