@@ -4,6 +4,9 @@ image:
 env:
   CLIENT_URL: "https://training-platform.apps-crc.testing"
   VAPID_PUBLIC_KEY: "BNS64Kb9w84XhbJsqcwhqOt0djB-cwlZNXKNdgPmAlpcraWkSMfsNgkTzkyuBbA7L5Hq4C52Jcm9yWV8fLOhu58"
+  # Relay live Socket.IO events through Redis so clients on any backend pod receive them
+  # (needed once two pods can be alive at once: blue/green, rolling update, replicas > 1).
+  SOCKET_REDIS_ADAPTER: "true"
 
 attachments:
   persistence:
