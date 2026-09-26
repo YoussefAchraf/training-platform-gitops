@@ -21,6 +21,9 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=false
+      # Replicas are owned by KEDA (charts/keda-schedules): apply Git without
+      # touching them, not just ignore them when diffing.
+      - RespectIgnoreDifferences=true
   ignoreDifferences:
     - group: apps
       kind: StatefulSet
