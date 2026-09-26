@@ -1,0 +1,46 @@
+{{- if and .Values.rollout.enabled .Values.rollout.analysis.enabled }}
+# Smoke check run by the Rollout before promotion (against backend-preview) and after
+# it (against backend). It reuses the backend image (Node has fetch), so no extra image
+# is pulled and it needs no secrets. /health is served ahead of the rate limiter, so
+# the check can never be turned away with a 429. A failed run aborts the release and
+# the old ReplicaSet keeps serving.
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: backend-smoke
+  labels:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/part-of: training-platform
+spec:
+  args:
+    - name: url
+  metrics:
+    - name: health
+      count: 3
+      interval: 10s
+      failureLimit: 0
+      provider:
+        job:
+          spec:
+            backoffLimit: 0
+            activeDeadlineSeconds: 90
+            template:
+              spec:
+                restartPolicy: Never
+                securityContext:
+                  {{- toYaml .Values.securityContext | nindent 18 }}
+                containers:
+                  - name: smoke
+                    image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+                    imagePullPolicy: {{ .Values.image.pullPolicy }}
+                    command: ["node", "-e", "fetch(process.argv[1], { signal: AbortSignal.timeout(5000) }).then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))", "{{`{{args.url}}`}}"]
+                    securityContext:
+                      {{- toYaml .Values.containerSecurityContext | nindent 22 }}
+                    resources:
+                      requests:
+                        cpu: 10m
+                        memory: 32Mi
+                      limits:
+                        cpu: 200m
+                        memory: 128Mi
+{{- end }}

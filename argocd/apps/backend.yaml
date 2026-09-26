@@ -23,6 +23,9 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=false
+      # Prune the old Deployment only after the new Rollout is Healthy, so the
+      # Deployment -> Rollout conversion never leaves the backend Service without a pod.
+      - PruneLast=true
       # Replicas are owned by KEDA (charts/keda-schedules): apply Git without
       # touching them, not just ignore them when diffing.
       - RespectIgnoreDifferences=true
@@ -35,3 +38,18 @@ spec:
       kind: StatefulSet
       jsonPointers:
         - /spec/replicas
+    - group: argoproj.io
+      kind: Rollout
+      jsonPointers:
+        - /spec/replicas
+    # The Rollout controller owns the selector of the active and preview Services
+    # (it adds rollouts-pod-template-hash); Git must not revert it. Only these two:
+    # the backend-redis Service keeps being diffed normally.
+    - kind: Service
+      name: backend
+      jsonPointers:
+        - /spec/selector
+    - kind: Service
+      name: backend-preview
+      jsonPointers:
+        - /spec/selector
