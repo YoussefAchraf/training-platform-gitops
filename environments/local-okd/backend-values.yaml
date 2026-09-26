@@ -5,6 +5,12 @@ env:
   CLIENT_URL: "https://training-platform.apps-crc.testing"
   VAPID_PUBLIC_KEY: "BNS64Kb9w84XhbJsqcwhqOt0djB-cwlZNXKNdgPmAlpcraWkSMfsNgkTzkyuBbA7L5Hq4C52Jcm9yWV8fLOhu58"
 
+# Blue/green releases (Argo Rollouts). Sandbox values do not set this, so the Sandbox
+# keeps the plain Deployment. Safe with two pods alive at once because the image
+# serialises its cron jobs with a database lock and env.SOCKET_REDIS_ADAPTER is true.
+rollout:
+  enabled: true
+
 attachments:
   persistence:
     storageClassName: ""
