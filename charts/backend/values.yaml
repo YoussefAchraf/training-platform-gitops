@@ -56,7 +56,8 @@ env:
 
 # Uploaded message attachments (images/voice/files) land on disk at
 # /app/storage - a real PVC, not emptyDir, so a redeploy or restart never
-# loses them. ReadWriteOnce is fine as long as replicaCount stays at 1.
+# loses them. ReadWriteOnce is fine on a single node (the two pods of a blue/green
+# release share it); a multi-node cluster would need ReadWriteMany or pod affinity.
 attachments:
   persistence:
     size: 5Gi

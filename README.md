@@ -179,8 +179,8 @@ rebuilding just because a Route hostname changes.
 | Cache/queues | **Redis 7 (alpine)**, ×2 | One dedicated instance for backend (refresh tokens, rate limiting), one dedicated instance for the chatbot (rate limiting, FAQ cache) — deliberately not shared |
 | Chatbot | **n8n** | Self-contained image (workflow JSON + entrypoint baked in by the app repo's own Dockerfile), plus a purpose-built `metrics-exporter` sidecar service for token/cost metrics n8n's own built-in metrics don't cover |
 | Observability | **kube-prometheus-stack** (Prometheus, Alertmanager, Grafana, kube-state-metrics, node-exporter) | Trimmed replica counts and resource requests for a single-node install; two custom Grafana dashboards (`pod-health-dashboard`, `chatbot-metrics-dashboard`) sideloaded as labeled ConfigMaps |
-| Releases | **Argo Rollouts** | The frontend is a blue/green Rollout: the new version comes up beside the live one, is smoke-tested through a preview Service, and only switches over when a person promotes it. The backend stays a Deployment (see Blue/green releases) |
-| Cost control | **KEDA** (cron scaler) | One `ScaledObject` per workload scales it to zero outside Monday-Friday working hours and back up in the morning: Deployments, StatefulSets and the frontend Rollout alike. It replaced kube-green, which could not scale a Rollout |
+| Releases | **Argo Rollouts** | The frontend and the backend are blue/green Rollouts: the new version comes up beside the live one, is smoke-tested through a preview Service, and only switches over when a person promotes it (see Blue/green releases) |
+| Cost control | **KEDA** (cron scaler) | One `ScaledObject` per workload scales it to zero outside Monday-Friday working hours and back up in the morning: Deployments, StatefulSets and the two Rollouts alike. It replaced kube-green, which could not scale a Rollout |
 | Load balancing | OpenShift router + Service | Two frontend replicas behind the Route (`leastconn`, no sticky cookie), a PodDisruptionBudget and a preStop drain so a removed pod never drops a request |
 | Policy | **OPA / conftest** (`policy/security.rego`) | Enforces this repo's own OKD-specific rules (no fixed UID, no `emptyDir` for stateful data, Routes not Ingress, TLS-terminated Routes, resource requests/limits present) against every first-party chart's rendered output, in CI |
 | Manifest validation | **kubeconform** | `helm template \| kubeconform -strict` against the real Kubernetes/OpenShift API schema for every first-party chart |
@@ -200,7 +200,7 @@ rebuilding just because a Route hostname changes.
 | Pod | Replicas | Reached via |
 |---|---|---|
 | `frontend` (Rollout) | 2 while awake | OKD Route (the only externally-reachable service), balanced `leastconn` |
-| `backend` | 1 | internal Service only, through the frontend's reverse proxy |
+| `backend` (Rollout) | 1 | internal Service only, through the frontend's reverse proxy |
 | `postgres` | 1 (StatefulSet) | internal Service only |
 | `backend-redis` | 1 (StatefulSet) | internal Service only |
 | `n8n` | 1 | internal Service only, through the frontend's reverse proxy (webhook path only, not the editor UI) |
@@ -223,10 +223,12 @@ Services (`postgres:5432`, `backend-redis:6379`, `chatbot-redis:6379`,
 frontend's Route and, when their hostnames are set, Grafana's and
 Prometheus's Routes for admin access.
 
-### Blue/green releases (frontend)
+### Blue/green releases (frontend and backend)
 
-The frontend is an Argo Rollout (`strategy: blueGreen`), local OKD only. A new
-image tag does not replace the running pods: it comes up beside them.
+The frontend and the backend are Argo Rollouts (`strategy: blueGreen`), local
+OKD only. A new image tag does not replace the running pods: it comes up beside
+them. The steps below use the frontend's names; the backend is identical with
+`backend`, `backend-preview` and `backend-smoke`.
 
 1. The bump PR is promoted to `main` and ArgoCD syncs it. The Rollout starts a
    **green** ReplicaSet next to the live **blue** one. Users still hit blue.
@@ -248,12 +250,25 @@ A release whose smoke check fails is aborted (`Degraded`) and blue keeps
 serving. Every one of these paths was rehearsed under a traffic generator:
 zero failed requests across release, promotion and abort.
 
-**Why only the frontend.** The backend runs four in-process cron jobs (session
-reminders, report generation, certification reminders, upload clean-up) with
-no locking, and Socket.IO without a Redis adapter. Two backend copies alive at
-once (blue and green during a preview) would each fire the same reminder. It
-stays a Deployment until those jobs take a database advisory lock; that is a
-change in the backend repository, not here.
+**The backend.** Its smoke check (`backend-smoke`) is a one-shot Job, run from
+the backend image itself, that fetches `/health` on `backend-preview` before
+promotion and on the live `backend` Service after it. Two backend pods are
+alive at once during a release, which is safe only because of three things in
+the backend image, each of which this chart depends on:
+
+- its four in-process cron jobs (session reminders, report generation,
+  certification reminders, upload clean-up) take a PostgreSQL advisory lock, so
+  a reminder fires once however many pods run;
+- Socket.IO relays events through Redis (`env.SOCKET_REDIS_ADAPTER: "true"`),
+  so a client connected to one pod still receives events raised on the other;
+- `/health` sits ahead of the global rate limiter, so kubelet probes and the
+  smoke check can never be throttled into a restart loop.
+
+Database migrations run as a pre-sync hook while blue is still serving, so a
+migration has to be backward compatible with the previous release (add first,
+remove in a later release). The attachments volume is `ReadWriteOnce`, which
+lets blue and green share it on this single node; on a multi-node cluster it
+would need `ReadWriteMany` or pod affinity.
 
 **Load balancing.** Two frontend replicas sit behind the Route with
 `haproxy.router.openshift.io/balance: leastconn` and no sticky-session cookie
@@ -273,8 +288,8 @@ Monday-Friday, Europe/Paris; asleep evenings and weekends:
 | Workloads | Awake |
 |---|---|
 | `postgres`, `backend-redis`, `chatbot-redis` (StatefulSets) | 07:50 - 20:10 |
-| `backend`, `n8n`, `metrics-exporter` (Deployments) | 08:00 - 20:00 |
-| `frontend` (Rollout, 2 replicas) | 08:00 - 20:00 |
+| `n8n`, `metrics-exporter` (Deployments) | 08:00 - 20:00 |
+| `backend` (Rollout), `frontend` (Rollout, 2 replicas) | 08:00 - 20:00 |
 
 The data stores wake ten minutes before the apps and sleep ten minutes after,
 so nothing starts before, or outlives, what it depends on. After a window
@@ -303,10 +318,10 @@ replicas: every Application ignores `/spec/replicas` and syncs with
 
 Every StatefulSet uses a real `PersistentVolumeClaim`, never `emptyDir` —
 enforced by `policy/security.rego` — so a pod restart never loses data.
-`backend` (a Deployment, not a StatefulSet) has its own `backend-attachments`
+`backend` (a Rollout, not a StatefulSet) has its own `backend-attachments`
 PVC too, for messaging attachments (images/voice/files) written to
-`/app/storage` — `ReadWriteOnce` is fine as long as `replicaCount` stays at
-1. The one narrow exception the policy allows is a volume named `*-cache` (n8n's
+`/app/storage` — `ReadWriteOnce` is fine on a single node, where the two
+pods of a release can share it. The one narrow exception the policy allows is a volume named `*-cache` (n8n's
 build cache directory), which is genuinely safe to lose on restart and
 can't use a PVC anyway, since the image bakes its cache directory's
 ownership in a way that's incompatible with a persistent, pre-owned volume
@@ -654,7 +669,7 @@ architecture assume cluster-admin, so they can't come along unmodified:
 | Vault's Agent Injector | Needs a cluster-scoped `MutatingWebhookConfiguration` | The plain-`Secret` fallback every chart already has (`vault.enabled: false`) |
 | `charts/monitoring` (kube-prometheus-stack) | ~10 CRDs need cluster-admin; node-exporter needs `hostNetwork`/`hostPID`, which a shared cluster's SCC won't grant regardless | Not deployed on this target |
 | `charts/keda` + `charts/keda-schedules` (schedule-based sleep) | KEDA's CRDs and APIService need cluster-admin | Not deployed on this target — Sandbox already auto-reclaims idle environments on its own |
-| `charts/argo-rollouts` (blue/green) | Its CRDs need cluster-admin | Not deployed on this target — the frontend chart renders a plain Deployment (`rollout.enabled: false`), byte-for-byte what it rendered before blue/green existed |
+| `charts/argo-rollouts` (blue/green) | Its CRDs need cluster-admin | Not deployed on this target — the frontend and backend charts render a plain Deployment (`rollout.enabled: false`), byte-for-byte what they rendered before blue/green existed |
 | Multiple namespaces (`vault`, `argocd`, `monitoring`, `argo-rollouts`, `keda`, `training-platform`) | Sandbox gives you one fixed, pre-named namespace | Everything goes in that one namespace |
 
 What's actually deployed there: `backend`, `frontend`, `chatbot`, `postgres`,
