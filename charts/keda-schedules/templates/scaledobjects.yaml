@@ -1,0 +1,31 @@
+{{- range .Values.workloads }}
+---
+# {{ .name }} is awake {{ .start }}-{{ .end }} ({{ $.Values.timezone }}, days {{ $.Values.days }}) with {{ .replicas }} replica(s), asleep otherwise.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ .name }}
+  labels:
+    app.kubernetes.io/name: {{ .name }}
+    app.kubernetes.io/part-of: training-platform
+  {{- if $.Values.pause.enabled }}
+  annotations:
+    autoscaling.keda.sh/paused-replicas: {{ .replicas | quote }}
+  {{- end }}
+spec:
+  scaleTargetRef:
+    apiVersion: {{ .apiVersion | default "apps/v1" }}
+    kind: {{ .kind }}
+    name: {{ .name }}
+  pollingInterval: {{ $.Values.pollingIntervalSeconds }}
+  cooldownPeriod: {{ $.Values.cooldownPeriodSeconds }}
+  minReplicaCount: 0
+  maxReplicaCount: {{ .replicas }}
+  triggers:
+    - type: cron
+      metadata:
+        timezone: {{ $.Values.timezone | quote }}
+        start: {{ include "keda-schedules.cron" (dict "time" .start "days" $.Values.days) | quote }}
+        end: {{ include "keda-schedules.cron" (dict "time" .end "days" $.Values.days) | quote }}
+        desiredReplicas: {{ .replicas | quote }}
+{{- end }}

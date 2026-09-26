@@ -1,18 +1,21 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: kube-green-sleepinfo
+  name: keda-schedules
   namespace: argocd
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
   annotations:
-    argocd.argoproj.io/sync-wave: "1"
+    # After the workload Applications (waves 0 and 1), so every ScaledObject
+    # target already exists. KEDA itself (wave -1) is long up by then.
+    argocd.argoproj.io/sync-wave: "2"
 spec:
   project: default
   source:
     repoURL: https://github.com/YoussefAchraf/training-platform-gitops.git
     targetRevision: main
-    path: charts/kube-green-sleepinfo
+    path: charts/keda-schedules
+    helm:
+      valueFiles:
+        - ../../environments/local-okd/keda-schedules-values.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: training-platform
