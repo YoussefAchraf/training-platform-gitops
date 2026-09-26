@@ -48,7 +48,7 @@ jobs:
           set -e
           for env in environments/*/; do
             envname=$(basename "$env")
-            for c in postgres backend frontend chatbot idle-guard; do
+            for c in postgres backend frontend chatbot idle-guard keda-schedules; do
               valuesfile="$env$c-values.yaml"
               [ -f "$valuesfile" ] || continue
               echo "::group::kubeconform $envname/$c"
@@ -155,7 +155,7 @@ jobs:
           mkdir -p /tmp/rendered
           for env in environments/*/; do
             envname=$(basename "$env")
-            for c in postgres backend frontend chatbot idle-guard; do
+            for c in postgres backend frontend chatbot idle-guard keda-schedules; do
               valuesfile="$env$c-values.yaml"
               [ -f "$valuesfile" ] || continue
               helm template "charts/$c" -f "$valuesfile" > "/tmp/rendered/${envname}-${c}.yaml"

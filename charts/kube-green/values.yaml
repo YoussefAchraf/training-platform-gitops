@@ -1,5 +1,0 @@
-kube-green:
-  certManager:
-    enabled: false
-  jobsCert:
-    enabled: true

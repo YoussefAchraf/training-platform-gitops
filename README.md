@@ -71,22 +71,24 @@ bootstrap/               applied by hand, once — creates the OKD projects,
 
 argocd/apps/              one ArgoCD Application per deployable unit —
                           backend, frontend, chatbot, postgres, vault,
-                          monitoring, monitoring-routes, kube-green,
-                          kube-green-sleepinfo — each syncs, rolls back, and
+                          monitoring, monitoring-routes, argo-rollouts, keda,
+                          keda-schedules — each syncs, rolls back, and
                           reports health independently
 
 charts/                   Helm charts:
                             first-party: backend, frontend, postgres, chatbot
                               (chatbot bundles n8n + its own redis +
                               metrics-exporter as one logical unit),
+                              keda-schedules (the overnight/weekend sleep
+                              schedule, one KEDA ScaledObject per workload),
                               idle-guard (Sandbox-only, not an ArgoCD
                               Application - see openshift-sandbox/ below)
                             thin wrappers around upstream charts: vault
                               (hashicorp/vault), monitoring
-                              (kube-prometheus-stack), kube-green
+                              (kube-prometheus-stack), argo-rollouts
+                              (blue/green controller), keda (autoscaler)
                             plain manifest directories (no Chart.yaml, not
-                              Helm charts): kube-green-sleepinfo,
-                              monitoring-routes' Route split
+                              Helm charts): monitoring-routes' Route split
 
 environments/local-okd/   non-secret value overrides for this one
                           environment, plus *-secrets.example.yaml
@@ -123,13 +125,14 @@ block any other Application's sync.
 bootstrap/02-root-app.yaml (root-app)
   └── watches argocd/apps/*.yaml
         ├── vault.yaml              (sync-wave -1)
+        ├── argo-rollouts.yaml      (sync-wave -1, controller + CRDs for blue/green)
+        ├── keda.yaml               (sync-wave -1, controller + CRDs for the sleep schedule)
         ├── backend.yaml            (sync-wave  0, waits for vault Healthy)
         ├── chatbot.yaml            (sync-wave  0, waits for vault Healthy)
         ├── postgres.yaml           (sync-wave  0, waits for vault Healthy)
-        ├── frontend.yaml           (sync-wave  1)
-        ├── kube-green.yaml         (sync-wave  0)
-        ├── kube-green-sleepinfo.yaml (sync-wave 1, waits for kube-green Healthy)
+        ├── frontend.yaml           (sync-wave  1, a blue/green Rollout)
         ├── monitoring.yaml         (sync-wave  2, last — additive observability)
+        ├── keda-schedules.yaml     (sync-wave  2, after the workloads it scales exist)
         └── monitoring-routes.yaml  (sync-wave  3, waits for monitoring's Services to exist)
 ```
 
@@ -168,7 +171,7 @@ rebuilding just because a Route hostname changes.
 
 | Layer | Technology | Role in this repo |
 |---|---|---|
-| Packaging | **Helm 3** | Every chart under `charts/`; two are thin wrappers pinning an upstream chart as a dependency (Vault, kube-prometheus-stack, kube-green) rather than reimplementing them |
+| Packaging | **Helm 3** | Every chart under `charts/`; four are thin wrappers pinning an upstream chart as a dependency (Vault, kube-prometheus-stack, Argo Rollouts, KEDA) rather than reimplementing them |
 | Delivery | **ArgoCD** (app-of-apps) | Pulls from this repo's `main` on its own polling/webhook schedule and reconciles the cluster to match — the only thing that ever actually applies a manifest after the one-time bootstrap |
 | Platform | **OKD** (locally, via CRC) → **OpenShift** (production target) | Route objects instead of Ingress, SCC-based arbitrary-UID pod security instead of a fixed UID, Projects layered on Namespaces |
 | Secrets | **HashiCorp Vault** (Agent Sidecar Injector) | Secrets are never stored as Kubernetes `Secret` objects for backend/chatbot/postgres — a mutating webhook injects a sidecar that authenticates via each pod's own ServiceAccount and writes secrets to a file inside the pod |
@@ -176,7 +179,9 @@ rebuilding just because a Route hostname changes.
 | Cache/queues | **Redis 7 (alpine)**, ×2 | One dedicated instance for backend (refresh tokens, rate limiting), one dedicated instance for the chatbot (rate limiting, FAQ cache) — deliberately not shared |
 | Chatbot | **n8n** | Self-contained image (workflow JSON + entrypoint baked in by the app repo's own Dockerfile), plus a purpose-built `metrics-exporter` sidecar service for token/cost metrics n8n's own built-in metrics don't cover |
 | Observability | **kube-prometheus-stack** (Prometheus, Alertmanager, Grafana, kube-state-metrics, node-exporter) | Trimmed replica counts and resource requests for a single-node install; two custom Grafana dashboards (`pod-health-dashboard`, `chatbot-metrics-dashboard`) sideloaded as labeled ConfigMaps |
-| Cost control | **kube-green** | A `SleepInfo` custom resource scales the app tier to zero overnight and on weekends on this always-on local cluster |
+| Releases | **Argo Rollouts** | The frontend is a blue/green Rollout: the new version comes up beside the live one, is smoke-tested through a preview Service, and only switches over when a person promotes it. The backend stays a Deployment (see Blue/green releases) |
+| Cost control | **KEDA** (cron scaler) | One `ScaledObject` per workload scales it to zero outside Monday-Friday working hours and back up in the morning: Deployments, StatefulSets and the frontend Rollout alike. It replaced kube-green, which could not scale a Rollout |
+| Load balancing | OpenShift router + Service | Two frontend replicas behind the Route (`leastconn`, no sticky cookie), a PodDisruptionBudget and a preStop drain so a removed pod never drops a request |
 | Policy | **OPA / conftest** (`policy/security.rego`) | Enforces this repo's own OKD-specific rules (no fixed UID, no `emptyDir` for stateful data, Routes not Ingress, TLS-terminated Routes, resource requests/limits present) against every first-party chart's rendered output, in CI |
 | Manifest validation | **kubeconform** | `helm template \| kubeconform -strict` against the real Kubernetes/OpenShift API schema for every first-party chart |
 | IaC scanning | **checkov**, **kube-linter** | Misconfiguration scanning of every rendered manifest (report-only) |
@@ -194,7 +199,7 @@ rebuilding just because a Route hostname changes.
 
 | Pod | Replicas | Reached via |
 |---|---|---|
-| `frontend` | 1 | OKD Route (the only externally-reachable service) |
+| `frontend` (Rollout) | 2 while awake | OKD Route (the only externally-reachable service), balanced `leastconn` |
 | `backend` | 1 | internal Service only, through the frontend's reverse proxy |
 | `postgres` | 1 (StatefulSet) | internal Service only |
 | `backend-redis` | 1 (StatefulSet) | internal Service only |
@@ -209,13 +214,92 @@ rebuilding just because a Route hostname changes.
 | ArgoCD | `argocd` |
 | Vault (persistent, self-unsealing) + Agent Injector | `vault` |
 | kube-prometheus-stack | `monitoring` |
-| kube-green controller | `kube-green` |
+| Argo Rollouts controller | `argo-rollouts` |
+| KEDA operator + metrics API | `keda` |
 
 All pod-to-pod traffic stays on the cluster network via `ClusterIP`
 Services (`postgres:5432`, `backend-redis:6379`, `chatbot-redis:6379`,
 `backend:4000`, `n8n:5678`). The only externally-reachable objects are the
 frontend's Route and, when their hostnames are set, Grafana's and
 Prometheus's Routes for admin access.
+
+### Blue/green releases (frontend)
+
+The frontend is an Argo Rollout (`strategy: blueGreen`), local OKD only. A new
+image tag does not replace the running pods: it comes up beside them.
+
+1. The bump PR is promoted to `main` and ArgoCD syncs it. The Rollout starts a
+   **green** ReplicaSet next to the live **blue** one. Users still hit blue.
+2. The `frontend-preview` Service points at green. An `AnalysisTemplate`
+   (`frontend-smoke`) runs three checks against it: the SPA itself and
+   `/api/health` through the nginx proxy, so a broken `BACKEND_UPSTREAM` fails
+   the release before anyone sees it.
+3. The Rollout **pauses** (ArgoCD shows the Application as `Suspended`). Look
+   at green first if you like: `oc port-forward svc/frontend-preview 8081:8080
+   -n training-platform`, then open http://localhost:8081.
+4. **Promote**: ArgoCD UI (Rollout resource action *Promote-full*) or
+   `kubectl argo rollouts promote frontend -n training-platform`. The active
+   Service switches to green in one step; a post-promotion analysis checks the
+   live Service again.
+5. Blue is kept for 300 s (`scaleDownDelaySeconds`), so rollback is instant:
+   `kubectl argo rollouts undo frontend -n training-platform`.
+
+A release whose smoke check fails is aborted (`Degraded`) and blue keeps
+serving. Every one of these paths was rehearsed under a traffic generator:
+zero failed requests across release, promotion and abort.
+
+**Why only the frontend.** The backend runs four in-process cron jobs (session
+reminders, report generation, certification reminders, upload clean-up) with
+no locking, and Socket.IO without a Redis adapter. Two backend copies alive at
+once (blue and green during a preview) would each fire the same reminder. It
+stays a Deployment until those jobs take a database advisory lock; that is a
+change in the backend repository, not here.
+
+**Load balancing.** Two frontend replicas sit behind the Route with
+`haproxy.router.openshift.io/balance: leastconn` and no sticky-session cookie
+(the frontend is stateless), a `PodDisruptionBudget` (`maxUnavailable: 1`) and
+a 5 s `preStop` sleep so the router drops a pod before it stops.
+
+**Capacity.** The node's memory *requests* are nearly fully booked, so the
+frontend requests 32Mi (nginx peaks near 12Mi; the 128Mi limit is unchanged):
+two replicas cost what one used to, and a release briefly needs two more.
+
+### Sleeping and waking (KEDA)
+
+`charts/keda-schedules` renders one KEDA `ScaledObject` (cron trigger) per
+workload from `environments/local-okd/keda-schedules-values.yaml`. Awake
+Monday-Friday, Europe/Paris; asleep evenings and weekends:
+
+| Workloads | Awake |
+|---|---|
+| `postgres`, `backend-redis`, `chatbot-redis` (StatefulSets) | 07:50 - 20:10 |
+| `backend`, `n8n`, `metrics-exporter` (Deployments) | 08:00 - 20:00 |
+| `frontend` (Rollout, 2 replicas) | 08:00 - 20:00 |
+
+The data stores wake ten minutes before the apps and sleep ten minutes after,
+so nothing starts before, or outlives, what it depends on. After a window
+closes a workload scales to zero once the 300 s cooldown passes.
+
+**This is state-based, unlike kube-green.** kube-green acted only at the
+scheduled moment, so a cluster started at 22:00 stayed awake. KEDA decides
+from the clock: start the cluster on a weekend and the app tier scales to zero
+after five minutes. Override it without touching Git:
+
+```sh
+scripts/keda-sleep.sh status      # what is awake, what is overridden
+scripts/keda-sleep.sh awake       # keep everything awake now
+scripts/keda-sleep.sh schedule    # hand control back to the schedule
+```
+
+(This sets KEDA's `autoscaling.keda.sh/paused-replicas` annotation; ArgoCD
+does not revert it.) Committing `pause: {enabled: true}` in the values file does
+the same thing durably.
+
+**What replaced what.** kube-green could only scale Deployments, StatefulSets
+and CronJobs, so it could not have slept the frontend once it became a Rollout;
+KEDA scales anything with a `/scale` subresource. ArgoCD keeps its hands off
+replicas: every Application ignores `/spec/replicas` and syncs with
+`RespectIgnoreDifferences=true`.
 
 Every StatefulSet uses a real `PersistentVolumeClaim`, never `emptyDir` —
 enforced by `policy/security.rego` — so a pod restart never loses data.
@@ -569,8 +653,9 @@ architecture assume cluster-admin, so they can't come along unmodified:
 | Self-installed ArgoCD (`bootstrap/`) | Needs cluster-scoped CRDs (`Application`, `AppProject`) | Direct `helm upgrade --install`, run by hand or from a script — `scripts/deploy-sandbox.sh` |
 | Vault's Agent Injector | Needs a cluster-scoped `MutatingWebhookConfiguration` | The plain-`Secret` fallback every chart already has (`vault.enabled: false`) |
 | `charts/monitoring` (kube-prometheus-stack) | ~10 CRDs need cluster-admin; node-exporter needs `hostNetwork`/`hostPID`, which a shared cluster's SCC won't grant regardless | Not deployed on this target |
-| `charts/kube-green` | Own CRD needs cluster-admin | Not deployed on this target — Sandbox already auto-reclaims idle environments on its own |
-| Multiple namespaces (`vault`, `argocd`, `monitoring`, `kube-green`, `training-platform`) | Sandbox gives you one fixed, pre-named namespace | Everything goes in that one namespace |
+| `charts/keda` + `charts/keda-schedules` (schedule-based sleep) | KEDA's CRDs and APIService need cluster-admin | Not deployed on this target — Sandbox already auto-reclaims idle environments on its own |
+| `charts/argo-rollouts` (blue/green) | Its CRDs need cluster-admin | Not deployed on this target — the frontend chart renders a plain Deployment (`rollout.enabled: false`), byte-for-byte what it rendered before blue/green existed |
+| Multiple namespaces (`vault`, `argocd`, `monitoring`, `argo-rollouts`, `keda`, `training-platform`) | Sandbox gives you one fixed, pre-named namespace | Everything goes in that one namespace |
 
 What's actually deployed there: `backend`, `frontend`, `chatbot`, `postgres`,
 `idle-guard` — none of these are cluster-scoped and none bring their own
@@ -582,9 +667,9 @@ practical bootstrap order is: deploy without a Route, run
 `oc expose svc/frontend` to get OpenShift's own auto-generated hostname,
 then write that real hostname back into `frontend-values.yaml`.
 
-`charts/idle-guard` is the other side of the `kube-green` row above: Sandbox
-auto-reclaims (scales to 0) workloads that sit idle, and unlike kube-green's
-scheduled sleep, there's no way to opt out of it. `idle-guard` is a
+`charts/idle-guard` is the other side of the schedule-based sleep row above: Sandbox
+auto-reclaims (scales to 0) workloads that sit idle, and unlike the scheduled
+sleep on local OKD, there's no way to opt out of it. `idle-guard` is a
 namespace-scoped `CronJob` (needs no cluster-admin, so it fits here) that
 runs every 10 minutes, checks `postgres`/`backend-redis`/`chatbot-redis`/
 `backend`/`frontend`/`n8n`, and scales anything it finds at 0 replicas back
