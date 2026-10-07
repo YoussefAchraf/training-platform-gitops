@@ -1,0 +1,16 @@
+{{- if .Values.injectorRestart.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vault-injector-restart
+  labels:
+    app.kubernetes.io/name: vault-injector-restart
+    app.kubernetes.io/part-of: training-platform
+subjects:
+  - kind: ServiceAccount
+    name: vault-injector-restart
+roleRef:
+  kind: Role
+  name: vault-injector-restart
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}
