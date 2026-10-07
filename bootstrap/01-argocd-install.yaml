@@ -21,7 +21,14 @@ spec:
               memory: 256Mi
             limits:
               cpu: 500m
-              memory: 1Gi
+              # Real finding (2026-10-07): the controller was repeatedly OOM-killed
+              # at 1Gi (peaked ~986Mi, confirmed via memory.current in its cgroup)
+              # while reconciling - most likely driven by the monitoring app's
+              # CRD churn (it never settles; OKD's own release payload already
+              # owns 7 of its CRDs, so ArgoCD keeps re-diffing them). Request is
+              # unchanged, so this doesn't take any more scheduling headroom on
+              # this already-tight single-node cluster; only the ceiling moved.
+              memory: 1536Mi
         dex:
           resources:
             requests:

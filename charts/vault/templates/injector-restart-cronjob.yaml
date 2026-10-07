@@ -1,0 +1,42 @@
+{{- if .Values.injectorRestart.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: vault-injector-restart
+  labels:
+    app.kubernetes.io/name: vault-injector-restart
+    app.kubernetes.io/part-of: training-platform
+spec:
+  schedule: {{ .Values.injectorRestart.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: {{ .Values.injectorRestart.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.injectorRestart.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 60
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: vault-injector-restart
+        spec:
+          restartPolicy: Never
+          serviceAccountName: vault-injector-restart
+          securityContext:
+            {{- toYaml .Values.injectorRestart.securityContext | nindent 12 }}
+          containers:
+            - name: restart
+              image: "{{ .Values.injectorRestart.image.repository }}:{{ .Values.injectorRestart.image.tag }}"
+              imagePullPolicy: {{ .Values.injectorRestart.image.pullPolicy }}
+              securityContext:
+                {{- toYaml .Values.injectorRestart.containerSecurityContext | nindent 16 }}
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  echo "Restarting vault-agent-injector to force a fresh serving certificate"
+                  oc delete pod -n {{ .Release.Namespace }} -l app.kubernetes.io/name=vault-agent-injector --ignore-not-found
+              resources:
+                {{- toYaml .Values.injectorRestart.resources | nindent 16 }}
+{{- end }}

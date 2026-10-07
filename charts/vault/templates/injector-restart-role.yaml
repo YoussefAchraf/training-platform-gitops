@@ -1,0 +1,15 @@
+{{- if .Values.injectorRestart.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vault-injector-restart
+  labels:
+    app.kubernetes.io/name: vault-injector-restart
+    app.kubernetes.io/part-of: training-platform
+rules:
+  # Namespace-scoped: this namespace only ever holds vault-0 and the injector,
+  # and the job only ever targets pods by the injector's own label selector.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "delete"]
+{{- end }}
