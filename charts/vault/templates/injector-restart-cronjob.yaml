@@ -36,7 +36,11 @@ spec:
                 - |
                   set -eu
                   echo "Restarting vault-agent-injector to force a fresh serving certificate"
-                  oc delete pod -n {{ .Release.Namespace }} -l app.kubernetes.io/name=vault-agent-injector --ignore-not-found
+                  # --wait=false: the default delete watches the pod until it's gone,
+                  # which needs a "watch" RBAC verb this ServiceAccount doesn't have
+                  # (minimal RBAC: get/list/delete only). The Deployment recreates the
+                  # pod regardless of whether this job sticks around to see it happen.
+                  oc delete pod -n {{ .Release.Namespace }} -l app.kubernetes.io/name=vault-agent-injector --ignore-not-found --wait=false
               resources:
                 {{- toYaml .Values.injectorRestart.resources | nindent 16 }}
 {{- end }}
