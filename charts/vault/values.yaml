@@ -210,3 +210,38 @@ vault:
   ui:
     enabled: true
     serviceType: ClusterIP
+
+# Real, recurring finding on this CRC install (first caught 2026-09-26, hit again
+# 2026-10-07): the Agent Injector's auto-TLS serving certificate is valid for
+# exactly 24h and renews itself on an in-process timer. After a VM suspend the
+# CRC clock lags the host, so the timer can miss its own renewal window. Once the
+# cert expires, the admission webhook (failurePolicy: Ignore) admits new pods
+# WITHOUT injecting the Vault sidecar instead of rejecting them - backend and
+# postgres ran 170+ restarts over ~2.75 days before being caught by hand. This
+# CronJob deletes the injector pod every 12h (half the cert's lifetime), so a
+# fresh cert is always issued with a full 12h of margin even if one restart is
+# missed. The Deployment recreates the pod immediately (stateless, ~6s).
+injectorRestart:
+  enabled: true
+  schedule: "0 */12 * * *"
+  image:
+    repository: image-registry.openshift-image-registry.svc:5000/openshift/tools
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
